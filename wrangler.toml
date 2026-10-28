@@ -1,0 +1,26 @@
+name = "hype-tap-app"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "hype-tap-db"
+database_id = "YOUR_D1_DATABASE_ID"   # replace after creating D1
+
+[vars]
+ADMIN_ID = "8990854464"
+BOT_USERNAME = "Hype_nativeevm_bot"
+MIN_WITHDRAW = "1"
+TAP_REWARD = "0.000695"
+REFERRAL_REWARD = "0.0008526"
+ENERGY_MAX = "1000"
+ENERGY_COOLDOWN_SEC = "3600"
+
+# Secrets (set via `wrangler secret put`):
+# BOT_TOKEN
+# ADMIN_ID can also be secret if preferred
+
+[assets]
+directory = "./frontend/dist"
+binding = "ASSETS"
