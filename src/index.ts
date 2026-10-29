@@ -70,16 +70,42 @@ async function getAllSettings(db: D1Database, env: Env) {
 
 async function ensureUser(db: D1Database, tgUser: any, referredBy: number | null, env: Env) {
   let user = await getUser(db, tgUser.id);
+  const settings = await getAllSettings(db, env);
+
   if (user) {
+    // Existing user – update profile
     await db.prepare(
       `UPDATE users SET username=?, first_name=?, last_name=?, last_active=strftime('%s','now') WHERE id=?`
     ).bind(tgUser.username || null, tgUser.first_name || null, tgUser.last_name || null, tgUser.id).run();
+
+    // If this user was never referred and a valid referrer is present → attribute now
+    const alreadyReferred = (user as any).referred_by;
+    if (referredBy && referredBy !== tgUser.id && !alreadyReferred) {
+      // Check referrer exists
+      const referrer = await getUser(db, referredBy);
+      if (referrer) {
+        const refReward = settings.referral_reward;
+        // Set referred_by on this user
+        await db.prepare(`UPDATE users SET referred_by = ? WHERE id = ?`).bind(referredBy, tgUser.id).run();
+        // Give reward + invite count to referrer
+        await db.prepare(
+          `UPDATE users SET balance = balance + ?, total_earned = total_earned + ?, invite_count = invite_count + 1 WHERE id = ?`
+        ).bind(refReward, refReward, referredBy).run();
+        // Log referral (UNIQUE on referred_id prevents double)
+        await db.prepare(
+          `INSERT OR IGNORE INTO referrals (referrer_id, referred_id, reward) VALUES (?, ?, ?)`
+        ).bind(referredBy, tgUser.id, refReward).run();
+        // Notify
+        await sendTelegramMessage(env.BOT_TOKEN, referredBy,
+          `🎉 You invited successfully!\n\nUser: @${tgUser.username || tgUser.first_name || tgUser.id}\nReward: +${refReward} HYPE`);
+      }
+    }
+
     return await getUser(db, tgUser.id);
   }
 
-  // New user
+  // Brand new user
   const isAdmin = String(tgUser.id) === env.ADMIN_ID ? 1 : 0;
-  const settings = await getAllSettings(db, env);
   await db.prepare(
     `INSERT INTO users (id, username, first_name, last_name, is_admin, referred_by, energy)
      VALUES (?, ?, ?, ?, ?, ?, ?)`
@@ -93,20 +119,19 @@ async function ensureUser(db: D1Database, tgUser: any, referredBy: number | null
     settings.energy_max
   ).run();
 
-  // Referral reward
+  // Referral reward for new user
   if (referredBy && referredBy !== tgUser.id) {
     const refReward = settings.referral_reward;
-    await db.prepare(
-      `UPDATE users SET balance = balance + ?, total_earned = total_earned + ?, invite_count = invite_count + 1 WHERE id = ?`
-    ).bind(refReward, refReward, referredBy).run();
-
-    await db.prepare(
-      `INSERT OR IGNORE INTO referrals (referrer_id, referred_id, reward) VALUES (?, ?, ?)`
-    ).bind(referredBy, tgUser.id, refReward).run();
-
-    // Notify referrer via bot
     const referrer = await getUser(db, referredBy);
     if (referrer) {
+      await db.prepare(
+        `UPDATE users SET balance = balance + ?, total_earned = total_earned + ?, invite_count = invite_count + 1 WHERE id = ?`
+      ).bind(refReward, refReward, referredBy).run();
+
+      await db.prepare(
+        `INSERT OR IGNORE INTO referrals (referrer_id, referred_id, reward) VALUES (?, ?, ?)`
+      ).bind(referredBy, tgUser.id, refReward).run();
+
       await sendTelegramMessage(env.BOT_TOKEN, referredBy,
         `🎉 You invited successfully!\n\nUser: @${tgUser.username || tgUser.first_name || tgUser.id}\nReward: +${refReward} HYPE`);
     }
@@ -783,9 +808,20 @@ app.get('*', async (c) => {
     if (url.pathname === '/' || url.pathname === '/index.html') {
       const res = await c.env.ASSETS.fetch(c.req.raw);
       const html = await res.text();
-      const loadingCSS = `<style>#loading-screen{position:fixed;top:0;left:0;right:0;bottom:0;background:linear-gradient(135deg,#0a0e27 0%,#1a1f3a 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;transition:opacity 0.5s ease;font-family:system-ui,-apple-system,sans-serif}#loading-screen.hidden{opacity:0;pointer-events:none}.ls-logo{font-size:42px;font-weight:900;color:#00f5d4;text-shadow:0 0 20px #00f5d4,0 0 40px #00f5d4;animation:lsPulse 1.5s ease-in-out infinite;margin-bottom:30px;letter-spacing:2px}.ls-logo .ls-tap{display:inline-block;animation:lsBounce 0.8s ease-in-out infinite}.ls-title{color:#fff;font-size:18px;font-weight:700;margin-bottom:10px}.ls-sub{color:#888;font-size:14px;margin-bottom:20px}.ls-dots::after{content:"";animation:lsDots 1.5s steps(4) infinite}.ls-spinner{width:36px;height:36px;border:3px solid rgba(0,245,212,0.15);border-top-color:#00f5d4;border-radius:50%;animation:lsSpin 0.8s linear infinite}@keyframes lsPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.08);opacity:0.85}}@keyframes lsBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}@keyframes lsDots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}@keyframes lsSpin{to{transform:rotate(360deg)}}</style>`;
-      const loadingHTML = `<div id="loading-screen"><div class="ls-logo"><span class="ls-tap">\u{1F446}</span> TAP TAP</div><div class="ls-title">Entering Hype EVM Native...</div><div class="ls-sub">Checking security steps<span class="ls-dots"></span></div><div class="ls-spinner"></div></div>`;
-      const loadingJS = `<script>(function(){function _hls(){var ls=document.getElementById("loading-screen");if(ls){ls.classList.add("hidden");setTimeout(function(){if(ls&&ls.parentNode)ls.parentNode.removeChild(ls)},600)}}window.addEventListener("load",function(){setTimeout(_hls,2500)});setTimeout(_hls,5000)})();</` + `script>`;
+      // MRG-style loading screen
+      const loadingCSS = `<style>
+#loading-screen{position:fixed;top:0;left:0;right:0;bottom:0;background:#0a0e14;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;transition:opacity .5s ease;font-family:system-ui,-apple-system,sans-serif}
+#loading-screen.hidden{opacity:0;pointer-events:none}
+.ls-coin{width:110px;height:110px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#f0d878 0%,#d4af37 45%,#a67c00 100%);display:flex;align-items:center;justify-content:center;box-shadow:0 0 40px rgba(212,175,55,.55),0 0 80px rgba(212,175,55,.25);position:relative;margin-bottom:28px;animation:lsPulse 2s ease-in-out infinite}
+.ls-coin::after{content:'';position:absolute;inset:-6px;border-radius:50%;border:3px solid transparent;border-top-color:#00ff88;border-right-color:rgba(0,255,136,.4);animation:lsSpin 1.2s linear infinite}
+.ls-coin img{width:68px;height:68px;border-radius:50%;object-fit:contain}
+.ls-title{font-size:1.55rem;font-weight:700;color:#f0d878;margin:0 0 12px;letter-spacing:.5px;text-shadow:0 0 12px rgba(212,175,55,.5)}
+.ls-sub{font-size:.9rem;color:#a0b0c0;line-height:1.45;margin:0 0 24px;text-align:center;max-width:280px;padding:0 16px}
+@keyframes lsPulse{0%,100%{box-shadow:0 0 40px rgba(212,175,55,.55),0 0 80px rgba(212,175,55,.25)}50%{box-shadow:0 0 55px rgba(212,175,55,.75),0 0 100px rgba(212,175,55,.35)}}
+@keyframes lsSpin{to{transform:rotate(360deg)}}
+</style>`;
+      const loadingHTML = `<div id="loading-screen"><div class="ls-coin"><img src="/hype-logo.png" alt="HYPE" onerror="this.style.display='none'"/></div><div class="ls-title">Hype Token</div><div class="ls-sub">Quick security check. If a box appears below, tick it to continue.</div></div>`;
+      const loadingJS = `<script>(function(){function _hls(){var ls=document.getElementById("loading-screen");if(ls){ls.classList.add("hidden");setTimeout(function(){if(ls&&ls.parentNode)ls.parentNode.removeChild(ls)},600)}}window.addEventListener("load",function(){setTimeout(_hls,2200)});setTimeout(_hls,4500)})();</` + `script>`;
       const inject = loadingCSS + loadingHTML + loadingJS;
       let modified = html;
       if (modified.includes('</head>')) {
