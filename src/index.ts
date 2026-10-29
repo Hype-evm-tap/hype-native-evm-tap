@@ -38,7 +38,9 @@ function parseInitData(initData: string, botToken: string): any | null {
     // For simplicity we trust Telegram WebApp in this scaffold (add proper verify later)
     const userStr = params.get('user');
     if (!userStr) return null;
-    return JSON.parse(userStr);
+    const parsedUser = JSON.parse(userStr);
+    try { parsedUser.start_param = params.get('start_param') || null; } catch {}
+    return parsedUser;
   } catch {
     return null;
   }
@@ -62,7 +64,7 @@ async function getAllSettings(db: D1Database, env: Env) {
     min_withdraw: await getSetting(db, "min_withdraw", parseFloat(env.MIN_WITHDRAW) || 2),
     energy_max: await getSetting(db, "energy_max", parseFloat(env.ENERGY_MAX) || 1000),
     energy_cooldown: await getSetting(db, "energy_cooldown", parseFloat(env.ENERGY_COOLDOWN_SEC) || 3600),
-    daily_checkin_reward: await getSetting(db, "daily_checkin_reward", 0.001),
+    daily_checkin_reward: await getSetting(db, "daily_checkin_reward", 0.0000005678),
   };
 }
 
@@ -72,11 +74,12 @@ async function ensureUser(db: D1Database, tgUser: any, referredBy: number | null
     await db.prepare(
       `UPDATE users SET username=?, first_name=?, last_name=?, last_active=strftime('%s','now') WHERE id=?`
     ).bind(tgUser.username || null, tgUser.first_name || null, tgUser.last_name || null, tgUser.id).run();
-    return user;
+    return await getUser(db, tgUser.id);
   }
 
   // New user
   const isAdmin = String(tgUser.id) === env.ADMIN_ID ? 1 : 0;
+  const settings = await getAllSettings(db, env);
   await db.prepare(
     `INSERT INTO users (id, username, first_name, last_name, is_admin, referred_by, energy)
      VALUES (?, ?, ?, ?, ?, ?, ?)`
@@ -87,12 +90,12 @@ async function ensureUser(db: D1Database, tgUser: any, referredBy: number | null
     tgUser.last_name || null,
     isAdmin,
     referredBy,
-    (await getAllSettings(db, env)).energy_max
+    settings.energy_max
   ).run();
 
   // Referral reward
   if (referredBy && referredBy !== tgUser.id) {
-    const refReward = (await getAllSettings(db, env)).referral_reward;
+    const refReward = settings.referral_reward;
     await db.prepare(
       `UPDATE users SET balance = balance + ?, total_earned = total_earned + ?, invite_count = invite_count + 1 WHERE id = ?`
     ).bind(refReward, refReward, referredBy).run();
@@ -168,13 +171,33 @@ async function getAuthUser(c: any) {
 // Health
 app.get('/api/health', (c) => c.json({ ok: true, time: new Date().toISOString() }));
 
+app.get('/api/price', async (c) => {
+  let price = 0;
+  try {
+    const priceRes = await fetch('https://api.hyperliquid.xyz/info', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'allMids' })
+    });
+    const mids = await priceRes.json() as Record<string, string>;
+    price = parseFloat(mids['HYPE'] || mids['@1'] || '0') || 0;
+  } catch {}
+  return c.json({ symbol: 'HYPE', price, timestamp: Math.floor(Date.now() / 1000) });
+});
+
 // Get / create user + current state
 app.post('/api/user', async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const tgUser = body.user || await getAuthUser(c);
   if (!tgUser?.id) return c.json({ error: 'Unauthorized' }, 401);
 
-  const startParam = body.start_param || body.referrer_id || null;
+  let startParam = body.start_param || body.referrer_id || tgUser.start_param || null;
+  if (!startParam) {
+    try {
+      const _sp = new URLSearchParams(c.req.header('X-Telegram-Init-Data') || '').get('start_param');
+      if (_sp) startParam = _sp;
+    } catch {}
+  }
   let referredBy: number | null = null;
   if (startParam) {
     const n = parseInt(String(startParam).replace(/\D/g, ''));
@@ -211,12 +234,10 @@ app.post('/api/user', async (c) => {
     price = parseFloat(mids['HYPE'] || mids['@1'] || '0') || 0;
   } catch {}
 
-  // Daily check-in status (UTC day)
+  // Daily check-in status (24h gap)
   const lastCheckin = (user as any).last_checkin_at || 0;
   const todayStart = Math.floor(Date.now() / 1000);
-  const lastDay = Math.floor(lastCheckin / 86400);
-  const todayDay = Math.floor(todayStart / 86400);
-  const canCheckin = lastDay < todayDay;
+  const canCheckin = lastCheckin === 0 || (todayStart - lastCheckin) >= 86400;
 
   return c.json({
     user: {
@@ -323,17 +344,15 @@ app.post('/api/checkin', async (c) => {
   const reward = settings.daily_checkin_reward;
   const lastCheckin = (user as any).last_checkin_at || 0;
   const nowTs = Math.floor(Date.now() / 1000);
-  const lastDay = Math.floor(lastCheckin / 86400);
-  const todayDay = Math.floor(nowTs / 86400);
-
-  if (lastDay >= todayDay) {
-    const nextReset = (todayDay + 1) * 86400;
-    const waitSec = Math.max(0, nextReset - nowTs);
+  const CHECKIN_GAP = 86400;
+  if (lastCheckin > 0 && nowTs - lastCheckin < CHECKIN_GAP) {
+    const nextCheckin = lastCheckin + CHECKIN_GAP;
+    const waitSec = Math.max(0, nextCheckin - nowTs);
     return c.json({
-      error: 'Already checked in today',
+      error: 'Already checked in. Next check-in available in 24 hours.',
       already: true,
       wait_seconds: waitSec,
-      next_checkin_at: nextReset,
+      next_checkin_at: nextCheckin,
     }, 429);
   }
 
@@ -434,14 +453,14 @@ app.post('/api/withdraw', async (c) => {
   if (!user) return c.json({ error: 'User not found' }, 404);
   if ((user.balance as number) < amount) return c.json({ error: 'Insufficient balance' }, 400);
 
-  // Deduct + create request
-  await c.env.DB.prepare(
-    `UPDATE users SET balance = balance - ?, wallet_address = ? WHERE id = ?`
-  ).bind(amount, wallet, tgUser.id).run();
-
+  // Create request first, then deduct (prevent race)
   const res = await c.env.DB.prepare(
     `INSERT INTO withdrawals (user_id, amount, wallet_address, status) VALUES (?, ?, ?, 'pending')`
   ).bind(tgUser.id, amount, wallet).run();
+
+  await c.env.DB.prepare(
+    `UPDATE users SET balance = balance - ?, wallet_address = ? WHERE id = ?`
+  ).bind(amount, wallet, tgUser.id).run();
 
   // Notify admin
   await sendTelegramMessage(c.env.BOT_TOKEN, c.env.ADMIN_ID,
@@ -570,6 +589,7 @@ app.delete('/api/admin/tasks/:id', async (c) => {
   const tgUser = await getAuthUser(c);
   if (!requireAdmin(c, tgUser)) return c.json({ error: 'Forbidden' }, 403);
   const id = c.req.param('id');
+  await c.env.DB.prepare('DELETE FROM user_tasks WHERE task_id = ?').bind(id).run();
   await c.env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(id).run();
   return c.json({ success: true });
 });
@@ -660,6 +680,19 @@ app.get('/api/admin/leaderboard', async (c) => {
   return c.json({ leaderboard: rows.results || [], total: countRow?.total || 0, limit, offset });
 });
 
+// ===== NEW: Admin users list =====
+app.get('/api/admin/users', async (c) => {
+  const tgUser = await getAuthUser(c);
+  if (!requireAdmin(c, tgUser)) return c.json({ error: 'Forbidden' }, 403);
+  const limit = Math.min(parseInt(c.req.query('limit') || '50'), 200);
+  const offset = parseInt(c.req.query('offset') || '0');
+  const rows = await c.env.DB.prepare(
+    `SELECT id, username, first_name, balance, total_earned, total_taps, invite_count, is_admin, referred_by, last_active, created_at FROM users ORDER BY id DESC LIMIT ? OFFSET ?`
+  ).bind(limit, offset).all();
+  const total = await c.env.DB.prepare('SELECT COUNT(*) as c FROM users').first();
+  return c.json({ users: rows.results || [], total: total?.c || 0 });
+});
+
 // ===== NEW: Admin user details =====
 app.get('/api/admin/users/:id', async (c) => {
   const tgUser = await getAuthUser(c);
@@ -702,6 +735,7 @@ app.delete('/api/admin/users/:id', async (c) => {
   const id = parseInt(c.req.param('id'));
   await c.env.DB.prepare('DELETE FROM user_tasks WHERE user_id = ?').bind(id).run();
   await c.env.DB.prepare('DELETE FROM referrals WHERE referrer_id = ? OR referred_id = ?').bind(id, id).run();
+  await c.env.DB.prepare('DELETE FROM withdrawals WHERE user_id = ?').bind(id).run();
   await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id).run();
   return c.json({ success: true });
 });
@@ -742,10 +776,29 @@ app.get('/api/admin/referrals', async (c) => {
   return c.json({ referrals: rows.results || [] });
 });
 
-// Serve frontend (assets)
+// Serve frontend (assets) + loading screen injection
 app.get('*', async (c) => {
-  // Try to serve from assets binding if available
   if (c.env.ASSETS) {
+    const url = new URL(c.req.url);
+    if (url.pathname === '/' || url.pathname === '/index.html') {
+      const res = await c.env.ASSETS.fetch(c.req.raw);
+      const html = await res.text();
+      const loadingCSS = `<style>#loading-screen{position:fixed;top:0;left:0;right:0;bottom:0;background:linear-gradient(135deg,#0a0e27 0%,#1a1f3a 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;transition:opacity 0.5s ease;font-family:system-ui,-apple-system,sans-serif}#loading-screen.hidden{opacity:0;pointer-events:none}.ls-logo{font-size:42px;font-weight:900;color:#00f5d4;text-shadow:0 0 20px #00f5d4,0 0 40px #00f5d4;animation:lsPulse 1.5s ease-in-out infinite;margin-bottom:30px;letter-spacing:2px}.ls-logo .ls-tap{display:inline-block;animation:lsBounce 0.8s ease-in-out infinite}.ls-title{color:#fff;font-size:18px;font-weight:700;margin-bottom:10px}.ls-sub{color:#888;font-size:14px;margin-bottom:20px}.ls-dots::after{content:"";animation:lsDots 1.5s steps(4) infinite}.ls-spinner{width:36px;height:36px;border:3px solid rgba(0,245,212,0.15);border-top-color:#00f5d4;border-radius:50%;animation:lsSpin 0.8s linear infinite}@keyframes lsPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.08);opacity:0.85}}@keyframes lsBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}@keyframes lsDots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}@keyframes lsSpin{to{transform:rotate(360deg)}}</style>`;
+      const loadingHTML = `<div id="loading-screen"><div class="ls-logo"><span class="ls-tap">\u{1F446}</span> TAP TAP</div><div class="ls-title">Entering Hype EVM Native...</div><div class="ls-sub">Checking security steps<span class="ls-dots"></span></div><div class="ls-spinner"></div></div>`;
+      const loadingJS = `<script>(function(){function _hls(){var ls=document.getElementById("loading-screen");if(ls){ls.classList.add("hidden");setTimeout(function(){if(ls&&ls.parentNode)ls.parentNode.removeChild(ls)},600)}}window.addEventListener("load",function(){setTimeout(_hls,2500)});setTimeout(_hls,5000)})();</` + `script>`;
+      const inject = loadingCSS + loadingHTML + loadingJS;
+      let modified = html;
+      if (modified.includes('</head>')) {
+        modified = modified.replace('</head>', inject + '</head>');
+      } else if (modified.includes('<body')) {
+        modified = modified.replace('<body', inject + '<body');
+      } else {
+        modified = inject + modified;
+      }
+      const headers = new Headers(res.headers);
+      headers.set('Content-Type', 'text/html; charset=utf-8');
+      return new Response(modified, { status: res.status, headers });
+    }
     return c.env.ASSETS.fetch(c.req.raw);
   }
   return c.text('Frontend not built. Run npm run build:frontend', 404);
