@@ -25,3 +25,4 @@ ENERGY_COOLDOWN_SEC = "3600"
 [assets]
 directory = "./frontend/dist"
 binding = "ASSETS"
+run_worker_first = true
