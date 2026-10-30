@@ -1,0 +1,22 @@
+{
+  "name": "hype-tap-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "npm run build:frontend && wrangler deploy",
+    "build:frontend": "cd frontend && npm run build",
+    "db:create": "wrangler d1 create hype-tap-db",
+    "db:migrate": "wrangler d1 execute hype-tap-db --file=./db/schema.sql",
+    "db:migrate:local": "wrangler d1 execute hype-tap-db --local --file=./db/schema.sql"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240925.0",
+    "typescript": "^5.6.2",
+    "wrangler": "^3.78.0"
+  },
+  "dependencies": {
+    "hono": "^4.6.3",
+    "@walletconnect/ethereum-provider": "^2.21.1"
+  }
+}
