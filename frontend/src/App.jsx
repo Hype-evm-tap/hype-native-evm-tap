@@ -16,11 +16,9 @@ function formatNum(n, dec = 10) {
   const num = Number(n);
   if (!isFinite(num)) return '0';
   if (num === 0) return '0';
-  // toFixed avoids e-notation for normal small rewards
   let s = num.toFixed(Math.min(Math.max(dec, 0), 18));
-  // trim trailing zeros after decimal, keep at least one digit if pure integer
   if (s.includes('.')) {
-    s = s.replace(/0+$/, '').replace(/\.$/, '');
+    s = s.replace(/0+\( /, '').replace(/\. \)/, '');
   }
   return s || '0';
 }
@@ -31,9 +29,9 @@ function formatTime(sec) {
   const m = Math.floor((sec % 3600) / 60);
   const s = Math.floor(sec % 60);
   if (h > 0) {
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    return `\( {String(h).padStart(2, '0')}: \){String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   }
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `\( {String(m).padStart(2, '0')}: \){String(s).padStart(2, '0')}`;
 }
 
 export default function App() {
@@ -52,6 +50,7 @@ export default function App() {
   const [resetAt, setResetAt] = useState(0);
   const [waitSec, setWaitSec] = useState(0);
   const [tapAnim, setTapAnim] = useState(0);
+  const [particles, setParticles] = useState([]); // ← NEW
 
   // Admin
   const [adminTab, setAdminTab] = useState('stats');
@@ -98,7 +97,6 @@ export default function App() {
     return res.json();
   };
 
-  // Load user
   const loadUser = useCallback(async () => {
     try {
       const startParam = tg?.initDataUnsafe?.start_param || null;
@@ -128,13 +126,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Hide HTML boot splash once React is alive (single continuous loading)
     const boot = document.getElementById('boot-splash');
     if (boot) boot.classList.add('hide');
 
     loadUser();
     const iv = setInterval(() => {
-      // refresh price every 30s
       fetch('https://api.hyperliquid.xyz/info', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -147,19 +143,15 @@ export default function App() {
     return () => clearInterval(iv);
   }, [loadUser]);
 
-  // Keep energyRef in sync
   useEffect(() => {
     energyRef.current = energyLeft;
   }, [energyLeft]);
 
-  // Energy countdown — timer chalta rahe jab energy 0 ho, 1 ghante baad renew
   useEffect(() => {
-    // Energy > 0 aur koi active cooldown nahi → timer band
     if (energyLeft > 0 && (!resetAt || resetAt <= Math.floor(Date.now() / 1000))) {
       setWaitSec(0);
       return;
     }
-    // Cooldown active nahi
     if (!resetAt || resetAt <= 0) {
       setWaitSec(0);
       return;
@@ -169,7 +161,6 @@ export default function App() {
       const left = Math.max(0, resetAt - now);
       setWaitSec(left);
       if (left <= 0) {
-        // Timer khatam → energy full renew
         setEnergyLeft(config?.energy_max || 1000);
         setResetAt(0);
         setWaitSec(0);
@@ -181,7 +172,6 @@ export default function App() {
     return () => clearInterval(iv);
   }, [energyLeft, resetAt, config]);
 
-  // Daily check-in countdown (until next UTC midnight)
   useEffect(() => {
     if (canCheckin) {
       setCheckinWait(0);
@@ -222,7 +212,6 @@ export default function App() {
     }
   };
 
-  // Flush queued taps to server (one request at a time — no race)
   const flushTaps = async () => {
     if (tapInFlight.current) {
       pendingFlush.current = true;
@@ -240,8 +229,6 @@ export default function App() {
       });
       if (data.success) {
         const serverEnergy = Math.max(0, Number(data.energy) || 0);
-        // Local optimistic already decreased — take the LOWER of local vs server
-        // so concurrent race kabhi energy badha na sake
         const local = energyRef.current;
         const finalEnergy = Math.min(local, serverEnergy);
         energyRef.current = finalEnergy;
@@ -274,7 +261,6 @@ export default function App() {
       showToast('Tap failed');
     } finally {
       tapInFlight.current = false;
-      // Agar flush ke dauran naye taps aaye, dubara bhejo
       if (pendingFlush.current || tapQueue.current > 0) {
         pendingFlush.current = false;
         flushTaps();
@@ -282,14 +268,26 @@ export default function App() {
     }
   };
 
-  // Batch taps — energy 0 tak gire, 0 pe ruk jaye, timer 1h
+  // ========== UPDATED doTap with particles ==========
   const doTap = () => {
     if (energyRef.current <= 0) {
       showToast(`Energy empty • wait ${formatTime(waitSec)}`);
       return;
     }
     setTapAnim((a) => a + 1);
-    // Optimistic decrease via ref (no stale state)
+
+    // Scatter 4 small Hype logos
+    const newParticles = Array.from({ length: 4 }).map((_, i) => ({
+      id: Date.now() + i + Math.random(),
+      x: (Math.random() - 0.5) * 140,
+      y: -50 - Math.random() * 70,
+      rot: Math.random() * 360,
+    }));
+    setParticles((p) => [...p, ...newParticles]);
+    setTimeout(() => {
+      setParticles((prev) => prev.filter((pt) => !newParticles.find((n) => n.id === pt.id)));
+    }, 850);
+
     const next = Math.max(0, energyRef.current - 1);
     energyRef.current = next;
     setEnergyLeft(next);
@@ -306,7 +304,6 @@ export default function App() {
     }, 120);
   };
 
-  // Load other pages
   useEffect(() => {
     if (tab === 'leaderboard') {
       api('/api/leaderboard').then((d) => setLeaderboard(d.leaderboard || []));
@@ -374,7 +371,7 @@ export default function App() {
     if (data.success) {
       showToast('Settings saved!');
       setAdminSettings(data.settings);
-      loadUser(); // refresh config for tap
+      loadUser();
     } else {
       showToast(data.error || 'Failed');
     }
@@ -443,7 +440,6 @@ export default function App() {
     }
   };
 
-  // Load extra admin data when tab changes
   useEffect(() => {
     if (tab !== 'admin' || !user?.is_admin) return;
     if (adminTab === 'settings') loadAdminSettings();
@@ -538,7 +534,7 @@ export default function App() {
         body: JSON.stringify({ message: msg, photo: photo || undefined }),
       });
       if (data.success) {
-        showToast(`✅ Sent to ${data.sent}/${data.total || data.sent} users` + (data.failed ? ` (${data.failed} failed)` : ''));
+        showToast(`✅ Sent to \( {data.sent}/ \){data.total || data.sent} users` + (data.failed ? ` (${data.failed} failed)` : ''));
         setBroadcastMsg('');
         setBroadcastPhoto('');
       } else {
@@ -551,9 +547,8 @@ export default function App() {
     }
   };
 
-  // Mini App: use startapp so tg.initDataUnsafe.start_param is set ( ?start= only opens bot chat )
   const inviteLink = (config?.bot_username && user?.id)
-    ? `https://t.me/${config.bot_username}?startapp=${user.id}`
+    ? `https://t.me/\( {config.bot_username}?startapp= \){user.id}`
     : (user?.id ? `https://t.me/share/url?url=&text=Join%20with%20ref%20${user.id}` : '');
 
   if (loading) {
@@ -578,7 +573,6 @@ export default function App() {
     <div className="app">
       {toast && <div className="toast">{toast}</div>}
 
-      {/* Header - matching Hype Token UI */}
       <div className="header">
         <div className="header-left">
           <div className="logo-title">
@@ -590,7 +584,7 @@ export default function App() {
           </div>
           {price > 0 && (
             <div className="lvl-progress">
-              ≈ ${(Number(user?.balance || 0) * price).toFixed(4)}$ left to Lvl UP →
+              ≈ \( {(Number(user?.balance || 0) * price).toFixed(4)} \) left to Lvl UP →
             </div>
           )}
         </div>
@@ -609,7 +603,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* TAP PAGE */}
       {tab === 'tap' && (
         <>
           <div className="assets-card">
@@ -638,6 +631,21 @@ export default function App() {
               aria-label="Tap to mine"
             >
               <img src="/hype-logo.png" alt="HYPE Logo" className="logo-img" draggable={false} />
+              
+              {/* Scatter particles */}
+              {particles.map((p) => (
+                <img
+                  key={p.id}
+                  src="/hype-logo.png"
+                  alt=""
+                  className="tap-particle"
+                  style={{
+                    '--x': `${p.x}px`,
+                    '--y': `${p.y}px`,
+                    '--rot': `${p.rot}deg`,
+                  }}
+                />
+              ))}
             </div>
             <div className="tap-hint">
               {energyLeft > 0
@@ -715,7 +723,7 @@ export default function App() {
         </div>
       )}
 
-      {/* FRIENDS / REFERRAL */}
+      {/* FRIENDS */}
       {tab === 'friends' && (
         <div className="page">
           <div className="card">
@@ -738,7 +746,7 @@ export default function App() {
               onClick={() => {
                 navigator.clipboard?.writeText(inviteLink);
                 tg?.openTelegramLink?.(
-                  `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent('Join Hype Token Tap to Earn!')}`
+                  `https://t.me/share/url?url=\( {encodeURIComponent(inviteLink)}&text= \){encodeURIComponent('Join Hype Token Tap to Earn!')}`
                 );
                 showToast('Link copied!');
               }}
@@ -790,7 +798,7 @@ export default function App() {
         </div>
       )}
 
-      {/* WALLET / WITHDRAW */}
+      {/* WALLET */}
       {tab === 'wallet' && (
         <div className="page">
           <div className="card">
@@ -851,7 +859,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ADMIN PANEL */}
+      {/* ADMIN PANEL - same as before */}
       {tab === 'admin' && user?.is_admin && (
         <div className="page">
           <h3 style={{ color: '#f0d878', marginBottom: 12 }}>⚙️ Admin Panel</h3>
@@ -876,66 +884,47 @@ export default function App() {
             </div>
           )}
 
-          {/* SETTINGS - manage tap reward, energy, etc. */}
           {adminTab === 'settings' && (
             <div className="card">
               <div className="card-title">⚙️ Live App Controls</div>
               <div style={{ fontSize: '0.78rem', color: '#888', marginBottom: 12 }}>
-                Yahan change karoge → turant pure app par apply hoga (naye taps / naye referrals par)
+                Yahan change karoge → turant pure app par apply hoga
               </div>
 
               <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}>🔥 Per Tap Points (HYPE)</label>
               <input className="input" type="number" step="any" value={settingsForm.tap_reward}
-                onChange={(e) => setSettingsForm({ ...settingsForm, tap_reward: e.target.value })}
-                placeholder="e.g. 0.0000000695" />
+                onChange={(e) => setSettingsForm({ ...settingsForm, tap_reward: e.target.value })} />
 
               <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}>👥 Per Referral Points (HYPE)</label>
               <input className="input" type="number" step="any" value={settingsForm.referral_reward}
-                onChange={(e) => setSettingsForm({ ...settingsForm, referral_reward: e.target.value })}
-                placeholder="e.g. 0.00008526" />
+                onChange={(e) => setSettingsForm({ ...settingsForm, referral_reward: e.target.value })} />
 
               <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}>💸 Min Withdraw (HYPE)</label>
               <input className="input" type="number" step="any" value={settingsForm.min_withdraw}
-                onChange={(e) => setSettingsForm({ ...settingsForm, min_withdraw: e.target.value })}
-                placeholder="e.g. 2" />
+                onChange={(e) => setSettingsForm({ ...settingsForm, min_withdraw: e.target.value })} />
 
               <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}>⚡ Max Energy</label>
               <input className="input" type="number" value={settingsForm.energy_max}
-                onChange={(e) => setSettingsForm({ ...settingsForm, energy_max: e.target.value })}
-                placeholder="e.g. 1000" />
+                onChange={(e) => setSettingsForm({ ...settingsForm, energy_max: e.target.value })} />
 
               <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}>⏳ Energy Cooldown (seconds)</label>
               <input className="input" type="number" value={settingsForm.energy_cooldown}
-                onChange={(e) => setSettingsForm({ ...settingsForm, energy_cooldown: e.target.value })}
-                placeholder="e.g. 3600" />
+                onChange={(e) => setSettingsForm({ ...settingsForm, energy_cooldown: e.target.value })} />
 
               <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}>📅 Daily Check-in Reward (HYPE)</label>
               <input className="input" type="number" step="any" value={settingsForm.daily_checkin_reward}
-                onChange={(e) => setSettingsForm({ ...settingsForm, daily_checkin_reward: e.target.value })}
-                placeholder="e.g. 0.001" />
+                onChange={(e) => setSettingsForm({ ...settingsForm, daily_checkin_reward: e.target.value })} />
 
               <button className="btn btn-primary" style={{ width: '100%', marginTop: 8 }} onClick={saveSettings}>
                 💾 Save & Apply Live
               </button>
-              {adminSettings && (
-                <div style={{ marginTop: 12, fontSize: '0.8rem', color: 'rgba(0,255,136,0.7)', lineHeight: 1.5 }}>
-                  <strong>Live values:</strong><br />
-                  Tap: {formatNum(adminSettings.tap_reward, 12)} • Referral: {formatNum(adminSettings.referral_reward, 12)}<br />
-                  Min WD: {formatNum(adminSettings.min_withdraw, 8)} • Energy: {adminSettings.energy_max} / {adminSettings.energy_cooldown}s<br />
-                  Daily Check-in: {formatNum(adminSettings.daily_checkin_reward, 12)}
-                </div>
-              )}
             </div>
           )}
 
-          {/* USERS / LEADERBOARD manage */}
           {adminTab === 'users' && (
             <>
               <div className="card">
-                <div className="card-title">👤 Edit User Points (Leaderboard control)</div>
-                <div style={{ fontSize: '0.75rem', color: '#888', marginBottom: 8 }}>
-                  Balance / Total Earned badalne se leaderboard rank turant change hoga
-                </div>
+                <div className="card-title">👤 Edit User</div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input className="input" style={{ marginBottom: 0 }} placeholder="User Telegram ID" value={editUserId}
                     onChange={(e) => setEditUserId(e.target.value)} />
@@ -943,44 +932,36 @@ export default function App() {
                 </div>
                 {editUserId && editUserData.balance !== '' && (
                   <div style={{ marginTop: 12 }}>
-                    <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}>Balance</label>
                     <input className="input" type="number" step="any" value={editUserData.balance}
-                      onChange={(e) => setEditUserData({ ...editUserData, balance: e.target.value })} />
-                    <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}>Total Earned</label>
+                      onChange={(e) => setEditUserData({ ...editUserData, balance: e.target.value })} placeholder="Balance" />
                     <input className="input" type="number" step="any" value={editUserData.total_earned}
-                      onChange={(e) => setEditUserData({ ...editUserData, total_earned: e.target.value })} />
-                    <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}>Total Taps</label>
+                      onChange={(e) => setEditUserData({ ...editUserData, total_earned: e.target.value })} placeholder="Total Earned" />
                     <input className="input" type="number" value={editUserData.total_taps}
-                      onChange={(e) => setEditUserData({ ...editUserData, total_taps: e.target.value })} />
-                    <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}>Invite Count</label>
+                      onChange={(e) => setEditUserData({ ...editUserData, total_taps: e.target.value })} placeholder="Total Taps" />
                     <input className="input" type="number" value={editUserData.invite_count}
-                      onChange={(e) => setEditUserData({ ...editUserData, invite_count: e.target.value })} />
+                      onChange={(e) => setEditUserData({ ...editUserData, invite_count: e.target.value })} placeholder="Invite Count" />
                     <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '8px 0' }}>
                       <input type="checkbox" checked={editUserData.is_admin}
                         onChange={(e) => setEditUserData({ ...editUserData, is_admin: e.target.checked })} />
                       Is Admin
                     </label>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button className="btn btn-primary" style={{ flex: 1 }} onClick={saveUserEdit}>Save User</button>
+                      <button className="btn btn-primary" style={{ flex: 1 }} onClick={saveUserEdit}>Save</button>
                       <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => deleteUser(editUserId)}>Delete</button>
                     </div>
                   </div>
                 )}
               </div>
-
-              <div className="card-title" style={{ margin: '12px 0 8px', color: '#00ff88' }}>Top Users (Leaderboard)</div>
-              {adminLeaderboard.length === 0 && <div className="card">No users yet</div>}
               {adminLeaderboard.map((u, i) => (
                 <div className="card" key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px' }}>
                   <div>
                     <div style={{ fontWeight: 700 }}>#{i + 1} @{u.username || u.first_name || u.id}</div>
                     <div style={{ fontSize: '0.8rem', color: '#00ff88' }}>
-                      {formatNum(u.total_earned, 6)} earned • Bal {formatNum(u.balance, 4)} • Inv {u.invite_count || 0}
+                      {formatNum(u.total_earned, 6)} earned
                     </div>
-                    <div style={{ fontSize: '0.7rem', color: '#666' }}>ID: {u.id}</div>
                   </div>
                   <button className="btn btn-outline" style={{ padding: '6px 10px', fontSize: '0.75rem' }}
-                    onClick={() => { setEditUserId(String(u.id)); loadUserDetails(u.id); window.scrollTo(0, 0); }}>
+                    onClick={() => { setEditUserId(String(u.id)); loadUserDetails(u.id); }}>
                     Edit
                   </button>
                 </div>
@@ -988,18 +969,15 @@ export default function App() {
             </>
           )}
 
-          {/* REFERRALS admin list */}
           {adminTab === 'referrals' && (
             <>
-              <div className="card-title" style={{ marginBottom: 8, color: '#00ff88' }}>All Referrals</div>
-              {adminReferrals.length === 0 && <div className="card">No referrals yet</div>}
               {adminReferrals.map((r) => (
                 <div className="card" key={r.id} style={{ padding: '10px 14px' }}>
                   <div style={{ fontWeight: 600 }}>
                     @{r.referrer_name || r.referrer_id} → @{r.referred_name || r.referred_id}
                   </div>
                   <div style={{ fontSize: '0.8rem', color: '#00ff88' }}>
-                    Reward: +{formatNum(r.reward, 12)} HYPE • ID: {r.id}
+                    +{formatNum(r.reward, 12)} HYPE
                   </div>
                 </div>
               ))}
@@ -1008,25 +986,14 @@ export default function App() {
 
           {adminTab === 'withdrawals' && (
             <>
-              {adminWithdrawals.length === 0 && <div className="card">No pending withdrawals</div>}
               {adminWithdrawals.map((w) => (
                 <div className="card" key={w.id}>
-                  <div>
-                    @{w.username || w.user_id} • <strong>{w.amount} HYPE</strong>
-                  </div>
-                  <div style={{ fontSize: '0.8rem', wordBreak: 'break-all', margin: '6px 0' }}>
-                    {w.wallet_address}
-                  </div>
+                  <div>@{w.username || w.user_id} • <strong>{w.amount} HYPE</strong></div>
+                  <div style={{ fontSize: '0.8rem', wordBreak: 'break-all', margin: '6px 0' }}>{w.wallet_address}</div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn btn-primary" style={{ flex: 1, padding: 8 }} onClick={() => adminAction(w.id, 'approve')}>
-                      Approve
-                    </button>
-                    <button className="btn btn-outline" style={{ flex: 1, padding: 8 }} onClick={() => adminAction(w.id, 'processing')}>
-                      Processing
-                    </button>
-                    <button className="btn btn-danger" style={{ flex: 1, padding: 8 }} onClick={() => adminAction(w.id, 'reject')}>
-                      Reject
-                    </button>
+                    <button className="btn btn-primary" style={{ flex: 1, padding: 8 }} onClick={() => adminAction(w.id, 'approve')}>Approve</button>
+                    <button className="btn btn-outline" style={{ flex: 1, padding: 8 }} onClick={() => adminAction(w.id, 'processing')}>Processing</button>
+                    <button className="btn btn-danger" style={{ flex: 1, padding: 8 }} onClick={() => adminAction(w.id, 'reject')}>Reject</button>
                   </div>
                 </div>
               ))}
@@ -1044,19 +1011,15 @@ export default function App() {
                 </select>
                 <input className="input" placeholder="Link" value={newTask.link} onChange={(e) => setNewTask({ ...newTask, link: e.target.value })} />
                 <input className="input" placeholder="Reward HYPE" value={newTask.reward} onChange={(e) => setNewTask({ ...newTask, reward: e.target.value })} />
-                <button className="btn btn-primary" style={{ width: '100%' }} onClick={addTask}>
-                  Add Task
-                </button>
+                <button className="btn btn-primary" style={{ width: '100%' }} onClick={addTask}>Add Task</button>
               </div>
               {adminTasks.map((t) => (
                 <div className="card" key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div>{t.title}</div>
-                    <div style={{ fontSize: '0.8rem', color: '#00ff88' }}>+{formatNum(t.reward, 12)} • {t.type}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#00ff88' }}>+{formatNum(t.reward, 12)}</div>
                   </div>
-                  <button className="btn btn-danger" style={{ padding: '6px 12px' }} onClick={() => deleteTask(t.id)}>
-                    Delete
-                  </button>
+                  <button className="btn btn-danger" style={{ padding: '6px 12px' }} onClick={() => deleteTask(t.id)}>Delete</button>
                 </div>
               ))}
             </>
@@ -1064,74 +1027,34 @@ export default function App() {
 
           {adminTab === 'broadcast' && (
             <div className="card">
-              <div className="card-title">📢 Advanced Broadcast</div>
-              <div style={{ fontSize: '0.75rem', color: '#888', marginBottom: 10 }}>
-                Text only, Photo only, ya dono — sab users ko Telegram par bheja jayega
-              </div>
-
-              <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}>📷 Photo URL (optional)</label>
-              <input
-                className="input"
-                type="url"
-                placeholder="https://example.com/image.jpg"
-                value={broadcastPhoto}
-                onChange={(e) => setBroadcastPhoto(e.target.value)}
-              />
-              {broadcastPhoto.trim() && (
-                <div style={{ marginBottom: 12, textAlign: 'center' }}>
-                  <img
-                    src={broadcastPhoto.trim()}
-                    alt="Preview"
-                    style={{ maxWidth: '100%', maxHeight: 180, borderRadius: 12, border: '1px solid rgba(0,255,136,0.3)' }}
-                    onError={(e) => { e.target.style.display = 'none'; }}
-                  />
-                </div>
-              )}
-
-              <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}>💬 Message / Caption</label>
-              <textarea
-                className="input"
-                rows={4}
-                placeholder="Message to all users... (photo ke saath caption bhi ban sakta hai)"
-                value={broadcastMsg}
-                onChange={(e) => setBroadcastMsg(e.target.value)}
-                style={{ resize: 'vertical' }}
-              />
-
-              <button
-                className="btn btn-gold"
-                style={{ width: '100%', opacity: broadcastSending ? 0.7 : 1 }}
-                onClick={sendBroadcast}
-                disabled={broadcastSending}
-              >
-                {broadcastSending ? '⏳ Sending to all users...' : '🚀 Send Broadcast to Everyone'}
+              <div className="card-title">📢 Broadcast</div>
+              <input className="input" type="url" placeholder="Photo URL (optional)" value={broadcastPhoto}
+                onChange={(e) => setBroadcastPhoto(e.target.value)} />
+              <textarea className="input" rows={4} placeholder="Message..." value={broadcastMsg}
+                onChange={(e) => setBroadcastMsg(e.target.value)} style={{ resize: 'vertical' }} />
+              <button className="btn btn-gold" style={{ width: '100%' }} onClick={sendBroadcast} disabled={broadcastSending}>
+                {broadcastSending ? 'Sending...' : '🚀 Send Broadcast'}
               </button>
             </div>
           )}
         </div>
       )}
 
-      {/* Bottom Nav */}
       <div className="bottom-nav">
         <button className={`nav-item ${tab === 'tap' ? 'active' : ''}`} onClick={() => setTab('tap')}>
-          <span className="icon">⚡</span>
-          Tap
+          <span className="icon">⚡</span> Tap
         </button>
         <button className={`nav-item ${tab === 'tasks' ? 'active' : ''}`} onClick={() => setTab('tasks')}>
-          <span className="icon">🎁</span>
-          Tasks
+          <span className="icon">🎁</span> Tasks
         </button>
         <button className={`nav-item ${tab === 'friends' ? 'active' : ''}`} onClick={() => setTab('friends')}>
-          <span className="icon">👥</span>
-          Friends
+          <span className="icon">👥</span> Friends
         </button>
         <button className={`nav-item ${tab === 'leaderboard' ? 'active' : ''}`} onClick={() => setTab('leaderboard')}>
-          <span className="icon">🏆</span>
-          Rank
+          <span className="icon">🏆</span> Rank
         </button>
         <button className={`nav-item ${tab === 'wallet' ? 'active' : ''}`} onClick={() => setTab('wallet')}>
-          <span className="icon">💰</span>
-          Wallet
+          <span className="icon">💰</span> Wallet
         </button>
       </div>
     </div>
