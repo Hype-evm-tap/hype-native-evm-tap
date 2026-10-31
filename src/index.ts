@@ -1,0 +1,566 @@
+/**
+ * Hype Tap — Cloudflare Worker (Hono + D1)
+ * Merged from your body.user backend + critical fixes
+ *
+ * FIXES:
+ *  1) /api/tap returns `balance` (was missing → UI reset to 0)
+ *  2) GET /api/referrals returns real list (was hard-coded [])
+ *  3) GET /api/withdrawals fixed (was hard-coded [])
+ *  4) Atomic energy debit
+ *  5) energy_reset_at always in unix SECONDS
+ *  6) Admin sync on login
+ */
+
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+
+type Bindings = {
+  DB: D1Database;
+  ASSETS?: Fetcher;
+  BOT_TOKEN?: string;
+  ADMIN_ID?: string;
+  ADMIN_IDS?: string;
+  BOT_USERNAME?: string;
+  WALLETCONNECT_PROJECT_ID?: string;
+  VITE_WALLETCONNECT_PROJECT_ID?: string;
+  MIN_WITHDRAW?: string;
+  TAP_REWARD?: string;
+  REFERRAL_REWARD?: string;
+  ENERGY_MAX?: string;
+  ENERGY_COOLDOWN_SEC?: string;
+};
+
+type TgUser = {
+  id: number;
+  username?: string;
+  first_name?: string;
+  last_name?: string;
+};
+
+const app = new Hono<{ Bindings: Bindings }>();
+app.use('*', cors({
+  origin: '*',
+  allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization', 'X-Telegram-Init-Data'],
+}));
+
+const DEFAULTS: Record<string, string> = {
+  tap_reward: '0.0000000695',
+  referral_reward: '0.00008526',
+  min_withdraw: '2',
+  energy_max: '1000',
+  energy_cooldown: '3600',
+  daily_checkin_reward: '0.0000089',
+  streak_bonus: '0',
+  checkin_day_rewards: JSON.stringify([0.0000089, 0.000002, 0.000006, 0.000007, 0.0000079, 0.0000089, 0.0004]),
+};
+
+function toUnixSeconds(value: any): number {
+  const n = Number(value) || 0;
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.floor(n > 1e12 ? n / 1000 : n);
+}
+function nowSec() { return Math.floor(Date.now() / 1000); }
+
+async function getSetting(db: D1Database, key: string): Promise<string> {
+  try {
+    const row = await db.prepare('SELECT value FROM settings WHERE key = ?').bind(key).first<{ value: string }>();
+    if (row?.value != null) return row.value;
+  } catch {}
+  return DEFAULTS[key] ?? '';
+}
+
+async function setSetting(db: D1Database, key: string, value: string) {
+  await db.prepare(
+    `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, strftime('%s','now'))
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+  ).bind(key, String(value)).run();
+}
+
+async function getConfig(db: D1Database, env?: Bindings) {
+  let dayRewards: number[];
+  try {
+    dayRewards = JSON.parse(await getSetting(db, 'checkin_day_rewards'));
+    if (!Array.isArray(dayRewards) || dayRewards.length !== 7) throw new Error('bad');
+  } catch {
+    dayRewards = [0.0000089, 0.000002, 0.000006, 0.000007, 0.0000079, 0.0000089, 0.0004];
+  }
+  const cfg: any = {
+    tap_reward: parseFloat(await getSetting(db, 'tap_reward')),
+    referral_reward: parseFloat(await getSetting(db, 'referral_reward')),
+    min_withdraw: parseFloat(await getSetting(db, 'min_withdraw')),
+    energy_max: parseFloat(await getSetting(db, 'energy_max')),
+    energy_cooldown: parseFloat(await getSetting(db, 'energy_cooldown')),
+    daily_checkin_reward: parseFloat(await getSetting(db, 'daily_checkin_reward')),
+    streak_bonus: parseFloat(await getSetting(db, 'streak_bonus')) || 0,
+    checkin_day_rewards: dayRewards,
+    bot_username: env?.BOT_USERNAME || '',
+  };
+  if (env?.TAP_REWARD) cfg.tap_reward = parseFloat(env.TAP_REWARD);
+  if (env?.REFERRAL_REWARD) cfg.referral_reward = parseFloat(env.REFERRAL_REWARD);
+  if (env?.MIN_WITHDRAW) cfg.min_withdraw = parseFloat(env.MIN_WITHDRAW);
+  if (env?.ENERGY_MAX) cfg.energy_max = parseFloat(env.ENERGY_MAX);
+  if (env?.ENERGY_COOLDOWN_SEC) cfg.energy_cooldown = parseFloat(env.ENERGY_COOLDOWN_SEC);
+  return cfg;
+}
+
+function computeCanCheckin(lastCheckinAt: number) {
+  if (!lastCheckinAt) return { can: true, wait: 0 };
+  const lastSec = toUnixSeconds(lastCheckinAt);
+  const elapsed = nowSec() - lastSec;
+  if (elapsed < 86400) return { can: false, wait: 86400 - elapsed };
+  return { can: true, wait: 0 };
+}
+
+function isStreakBroken(lastCheckinAt: number) {
+  if (!lastCheckinAt) return false;
+  return nowSec() - toUnixSeconds(lastCheckinAt) > 86400 * 2;
+}
+
+function adminSet(env: Bindings) {
+  const raw = [env.ADMIN_ID || '', env.ADMIN_IDS || ''].join(',');
+  return new Set(raw.split(',').map((s) => s.trim()).filter(Boolean).map(Number));
+}
+
+async function ensureUser(db: D1Database, env: Bindings, tgUser: TgUser, startParam?: string | null) {
+  if (!tgUser?.id) throw new Error('No user');
+  let u = await db.prepare('SELECT * FROM users WHERE id = ?').bind(tgUser.id).first<any>();
+  const energyMax = parseFloat(await getSetting(db, 'energy_max')) || 1000;
+  const shouldAdmin = adminSet(env).has(Number(tgUser.id)) ? 1 : 0;
+
+  if (!u) {
+    await db.prepare(
+      `INSERT INTO users (id, username, first_name, last_name, energy, is_admin, created_at, last_active)
+       VALUES (?, ?, ?, ?, ?, ?, strftime('%s','now'), strftime('%s','now'))`
+    ).bind(tgUser.id, tgUser.username || '', tgUser.first_name || '', tgUser.last_name || '', energyMax, shouldAdmin).run();
+
+    if (startParam) {
+      const refId = parseInt(String(startParam).replace(/\D/g, ''), 10);
+      if (refId && refId !== tgUser.id) {
+        const ref = await db.prepare('SELECT id FROM users WHERE id = ?').bind(refId).first();
+        if (ref) {
+          const reward = parseFloat(await getSetting(db, 'referral_reward')) || parseFloat(env.REFERRAL_REWARD || '') || 0;
+          const ins = await db.prepare('INSERT OR IGNORE INTO referrals (referrer_id, referred_id, reward) VALUES (?, ?, ?)').bind(refId, tgUser.id, reward).run();
+          if ((ins?.meta?.changes ?? 0) > 0) {
+            await db.prepare('UPDATE users SET referred_by = ? WHERE id = ? AND (referred_by IS NULL OR referred_by = 0)').bind(refId, tgUser.id).run();
+            await db.prepare('UPDATE users SET balance = balance + ?, total_earned = total_earned + ?, invite_count = invite_count + 1 WHERE id = ?').bind(reward, reward, refId).run();
+          }
+        }
+      }
+    }
+    u = await db.prepare('SELECT * FROM users WHERE id = ?').bind(tgUser.id).first<any>();
+  } else {
+    await db.prepare(
+      `UPDATE users SET username = ?, first_name = ?, last_name = ?, last_active = strftime('%s','now'), is_admin = ? WHERE id = ?`
+    ).bind(tgUser.username || u.username, tgUser.first_name || u.first_name, tgUser.last_name || u.last_name, shouldAdmin || Number(u.is_admin) || 0, tgUser.id).run();
+    u = await db.prepare('SELECT * FROM users WHERE id = ?').bind(tgUser.id).first<any>();
+  }
+
+  const resetAt = toUnixSeconds(u.energy_reset_at);
+  if (Number(u.energy) <= 0 && (resetAt <= 0 || nowSec() >= resetAt)) {
+    await db.prepare('UPDATE users SET energy = ?, energy_reset_at = 0 WHERE id = ?').bind(energyMax, u.id).run();
+    u.energy = energyMax;
+    u.energy_reset_at = 0;
+  }
+
+  if (isStreakBroken(Number(u.last_checkin_at) || 0) && Number(u.checkin_streak) > 0) {
+    await db.prepare('UPDATE users SET checkin_streak = 0 WHERE id = ?').bind(u.id).run();
+    u.checkin_streak = 0;
+  }
+  return u;
+}
+
+function publicUser(u: any, env: Bindings) {
+  const last = toUnixSeconds(u.last_checkin_at);
+  const { can, wait } = computeCanCheckin(last);
+  return {
+    id: u.id,
+    username: u.username,
+    first_name: u.first_name,
+    balance: Number(u.balance) || 0,
+    total_earned: Number(u.total_earned) || 0,
+    total_taps: Number(u.total_taps) || 0,
+    energy: Number(u.energy) || 0,
+    energy_reset_at: toUnixSeconds(u.energy_reset_at),
+    invite_count: Number(u.invite_count) || 0,
+    wallet_address: u.wallet_address || '',
+    is_admin: !!u.is_admin || adminSet(env).has(Number(u.id)),
+    last_checkin_at: last,
+    can_checkin: can,
+    checkin_wait: wait,
+    checkin_streak: Number(u.checkin_streak) || 0,
+    streak: Number(u.checkin_streak) || 0,
+    checkin_total_earned: Number(u.checkin_total_earned) || 0,
+  };
+}
+
+async function listReferrals(db: D1Database, userId: number) {
+  const { results } = await db.prepare(
+    `SELECT r.id, r.referrer_id, r.referred_id, r.reward, r.created_at,
+            u.username, u.first_name, u.total_earned, u.total_taps
+     FROM referrals r LEFT JOIN users u ON u.id = r.referred_id
+     WHERE r.referrer_id = ? ORDER BY r.id DESC LIMIT 200`
+  ).bind(userId).all();
+  const list = (results || []) as any[];
+  const seen = new Set(list.map((r) => String(r.referred_id)));
+  const legacy = await db.prepare(
+    `SELECT id, username, first_name, total_earned, total_taps, created_at FROM users WHERE referred_by = ? ORDER BY id DESC LIMIT 200`
+  ).bind(userId).all();
+  for (const u of (legacy.results || []) as any[]) {
+    if (seen.has(String(u.id))) continue;
+    list.push({
+      id: `legacy-${u.id}`, referrer_id: userId, referred_id: u.id, reward: 0,
+      created_at: u.created_at, username: u.username, first_name: u.first_name,
+      total_earned: u.total_earned, total_taps: u.total_taps, legacy_record: true,
+    });
+    seen.add(String(u.id));
+  }
+  return { referrals: list, count: list.length };
+}
+
+// ──── Routes ────
+
+app.get('/api/health', (c) => c.json({ ok: true, time: new Date().toISOString() }));
+
+app.get('/api/config', async (c) => {
+  const id = c.env.WALLETCONNECT_PROJECT_ID || c.env.VITE_WALLETCONNECT_PROJECT_ID || '';
+  return c.json({ walletConnectProjectId: id, bot_username: c.env.BOT_USERNAME || '' });
+});
+
+app.get('/api/price', async (c) => {
+  let price = 0;
+  try {
+    const r = await fetch('https://api.hyperliquid.xyz/info', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'allMids' }),
+    });
+    const mids = (await r.json()) as Record<string, string>;
+    price = parseFloat(mids['HYPE'] || mids['@1'] || '0') || 0;
+  } catch {}
+  return c.json({ symbol: 'HYPE', price, timestamp: nowSec() });
+});
+
+app.post('/api/user', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const tgUser = body.user as TgUser;
+    if (!tgUser?.id) return c.json({ error: 'Unauthorized' }, 401);
+    const startParam = body.start_param || body.ref || body.referrer_id || null;
+    const u = await ensureUser(c.env.DB, c.env, tgUser, startParam);
+    const cfg = await getConfig(c.env.DB, c.env);
+    let price = 0;
+    try {
+      const r = await fetch('https://api.hyperliquid.xyz/info', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'allMids' }),
+      });
+      const mids = (await r.json()) as Record<string, string>;
+      price = parseFloat(mids['HYPE'] || mids['@1'] || '0') || 0;
+    } catch {}
+    return c.json({ user: publicUser(u, c.env), config: cfg, price });
+  } catch (e: any) {
+    return c.json({ error: e.message || 'Failed' }, 400);
+  }
+});
+
+app.post('/api/wallet', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const tgUser = body.user as TgUser;
+    if (!tgUser?.id) return c.json({ error: 'User required' }, 400);
+    await ensureUser(c.env.DB, c.env, tgUser, null);
+    const addr = String(body.wallet_address || '').trim();
+    if (addr && !/^0x[a-fA-F0-9]{40}$/.test(addr)) return c.json({ error: 'Invalid EVM address' }, 400);
+    await c.env.DB.prepare('UPDATE users SET wallet_address = ? WHERE id = ?').bind(addr, tgUser.id).run();
+    return c.json({ success: true, wallet_address: addr });
+  } catch (e: any) {
+    return c.json({ error: e?.message || 'Wallet save failed' }, 500);
+  }
+});
+
+app.post('/api/checkin', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const tgUser = body.user as TgUser;
+    if (!tgUser?.id) return c.json({ error: 'User required' }, 400);
+    let u = await ensureUser(c.env.DB, c.env, tgUser, null);
+    const last = toUnixSeconds(u.last_checkin_at);
+    const { can, wait } = computeCanCheckin(last);
+    if (!can) return c.json({ already: true, wait_seconds: wait, error: 'Check-in available after 24-hour cooldown.' }, 429);
+
+    let streak = Number(u.checkin_streak) || 0;
+    if (isStreakBroken(last)) streak = 0;
+    const nextDay = Math.min(streak + 1, 7);
+    const cfg = await getConfig(c.env.DB, c.env);
+    let reward = Number((cfg.checkin_day_rewards || [])[nextDay - 1]);
+    if (!Number.isFinite(reward) || reward < 0) reward = Number(cfg.daily_checkin_reward) || 0;
+    let newStreak = nextDay === 7 ? 0 : nextDay;
+    let bonus = 0;
+    if (nextDay >= 7) {
+      bonus = Number(cfg.streak_bonus) || 0;
+      if (bonus > 0) reward += bonus;
+    }
+    const ts = nowSec();
+    const rawLast = u.last_checkin_at ?? 0;
+    const claim = await c.env.DB.prepare(
+      `UPDATE users SET balance = balance + ?, total_earned = total_earned + ?, last_checkin_at = ?,
+       checkin_streak = ?, checkin_total_earned = COALESCE(checkin_total_earned, 0) + ?, last_active = ?
+       WHERE id = ? AND COALESCE(last_checkin_at, 0) = ?`
+    ).bind(reward, reward, ts, newStreak, reward, ts, u.id, rawLast).run();
+    if ((claim.meta?.changes ?? 0) === 0) return c.json({ already: true, wait_seconds: 86400, error: 'Already checked in' }, 409);
+    const updated = await c.env.DB.prepare('SELECT balance, checkin_streak, checkin_total_earned FROM users WHERE id = ?').bind(u.id).first<any>();
+    return c.json({
+      success: true, reward, streak: nextDay, next_streak: newStreak, day: nextDay, bonus,
+      streak_total: Number(updated?.checkin_total_earned ?? 0), balance: Number(updated?.balance) || 0,
+      last_checkin_at: ts, wait_seconds: 86400,
+    });
+  } catch (e: any) {
+    return c.json({ error: e?.message || 'Check-in failed' }, 500);
+  }
+});
+
+app.post('/api/tap', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const tgUser = body.user as TgUser;
+    if (!tgUser?.id) return c.json({ error: 'User required' }, 400);
+    let u = await ensureUser(c.env.DB, c.env, tgUser, null);
+    const cfg = await getConfig(c.env.DB, c.env);
+    const energyMax = cfg.energy_max || 1000;
+    const cooldownSec = cfg.energy_cooldown || 3600;
+    const rewardPer = cfg.tap_reward || 0;
+    const t = nowSec();
+    let energy = Math.max(0, Number(u.energy) || 0);
+    let resetAt = toUnixSeconds(u.energy_reset_at);
+
+    if (energy <= 0 && (resetAt <= 0 || t >= resetAt)) {
+      await c.env.DB.prepare('UPDATE users SET energy = ?, energy_reset_at = 0 WHERE id = ? AND energy <= 0').bind(energyMax, u.id).run();
+      u = (await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(u.id).first<any>()) || u;
+      energy = Math.max(0, Number(u.energy) || 0);
+      resetAt = toUnixSeconds(u.energy_reset_at);
+    }
+    if (energy <= 0) {
+      return c.json({ error: 'Energy depleted', energy: 0, energy_reset_at: resetAt, balance: Number(u.balance) || 0, wait_seconds: Math.max(0, resetAt - t) }, 429);
+    }
+
+    const taps = Math.max(1, Math.min(50, parseInt(body.taps || 1, 10)));
+    const actualTaps = Math.min(taps, energy);
+    const earned = actualTaps * rewardPer;
+
+    const update = await c.env.DB.prepare(
+      `UPDATE users SET
+        balance = balance + ?, total_earned = total_earned + ?,
+        energy = energy - ?,
+        energy_reset_at = CASE WHEN (energy - ?) <= 0 THEN ? ELSE 0 END,
+        total_taps = total_taps + ?, last_active = ?
+       WHERE id = ? AND energy >= ?`
+    ).bind(earned, earned, actualTaps, actualTaps, t + cooldownSec, actualTaps, t, u.id, actualTaps).run();
+
+    if ((update.meta?.changes ?? 0) === 0) {
+      const latest = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(u.id).first<any>();
+      const le = Math.max(0, Number(latest?.energy) || 0);
+      return c.json({
+        error: le <= 0 ? 'Energy depleted' : 'Energy changed. Please retry.',
+        energy: le, energy_reset_at: toUnixSeconds(latest?.energy_reset_at), balance: Number(latest?.balance) || 0,
+      }, le <= 0 ? 429 : 409);
+    }
+
+    const updated = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(u.id).first<any>();
+    return c.json({
+      success: true,
+      earned,
+      taps: actualTaps,
+      energy: Math.max(0, Number(updated?.energy) || 0),
+      energy_reset_at: toUnixSeconds(updated?.energy_reset_at),
+      balance: Number(updated?.balance) || 0, // CRITICAL — was missing
+    });
+  } catch (e: any) {
+    return c.json({ error: e.message || 'Tap failed' }, 400);
+  }
+});
+
+app.get('/api/tasks', async (c) => {
+  try {
+    const { results } = await c.env.DB.prepare('SELECT id, title, type, link, reward FROM tasks WHERE is_active = 1 ORDER BY id DESC').all();
+    return c.json({ tasks: results || [], completed: [] });
+  } catch { return c.json({ tasks: [], completed: [] }); }
+});
+
+app.post('/api/tasks/complete', async (c) => {
+  try {
+    const body = await c.req.json();
+    const u = await ensureUser(c.env.DB, c.env, body.user, null);
+    const task = await c.env.DB.prepare('SELECT * FROM tasks WHERE id = ? AND is_active = 1').bind(body.task_id).first<any>();
+    if (!task) return c.json({ error: 'Task not found' }, 404);
+    const done = await c.env.DB.prepare('SELECT 1 FROM user_tasks WHERE user_id = ? AND task_id = ?').bind(u.id, body.task_id).first();
+    if (done) return c.json({ error: 'Already completed' }, 400);
+    await c.env.DB.prepare('INSERT INTO user_tasks (user_id, task_id) VALUES (?, ?)').bind(u.id, body.task_id).run();
+    await c.env.DB.prepare('UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE id = ?').bind(task.reward, task.reward, u.id).run();
+    return c.json({ success: true, reward: task.reward });
+  } catch (e: any) { return c.json({ error: e.message }, 400); }
+});
+
+app.get('/api/leaderboard', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    'SELECT id, username, first_name, balance, total_earned, total_taps, invite_count FROM users ORDER BY total_earned DESC LIMIT 100'
+  ).all();
+  return c.json({ leaderboard: results || [] });
+});
+
+// FIX: was hard-coded []
+app.get('/api/referrals', async (c) => {
+  const qid = parseInt(c.req.query('user_id') || '0', 10);
+  if (!qid) return c.json({ referrals: [], count: 0 });
+  return c.json(await listReferrals(c.env.DB, qid));
+});
+
+app.post('/api/referrals', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    if (!body.user?.id) return c.json({ error: 'User required' }, 400);
+    await ensureUser(c.env.DB, c.env, body.user, null);
+    return c.json(await listReferrals(c.env.DB, body.user.id));
+  } catch (e: any) { return c.json({ error: e.message }, 400); }
+});
+
+app.post('/api/withdraw', async (c) => {
+  try {
+    const body = await c.req.json();
+    const u = await ensureUser(c.env.DB, c.env, body.user, null);
+    const amount = parseFloat(body.amount);
+    const wallet = String(body.wallet_address || u.wallet_address || '').trim();
+    const min = parseFloat(await getSetting(c.env.DB, 'min_withdraw')) || 2;
+    if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) return c.json({ error: 'Enter a valid HyperEVM wallet address' }, 400);
+    if (!amount || amount < min) return c.json({ error: `Min ${min} HYPE` }, 400);
+    const debit = await c.env.DB.prepare('UPDATE users SET balance = balance - ?, wallet_address = ? WHERE id = ? AND balance >= ?').bind(amount, wallet, u.id, amount).run();
+    if ((debit.meta?.changes ?? 0) === 0) return c.json({ error: 'Insufficient balance' }, 400);
+    await c.env.DB.prepare("INSERT INTO withdrawals (user_id, amount, wallet_address, status) VALUES (?, ?, ?, 'pending')").bind(u.id, amount, wallet).run();
+    const updated = await c.env.DB.prepare('SELECT balance FROM users WHERE id = ?').bind(u.id).first<any>();
+    return c.json({ success: true, balance: Number(updated?.balance) || 0, message: 'Withdrawal request submitted' });
+  } catch (e: any) { return c.json({ error: e.message }, 400); }
+});
+
+app.get('/api/withdrawals', async (c) => {
+  const qid = parseInt(c.req.query('user_id') || '0', 10);
+  if (!qid) return c.json({ withdrawals: [] });
+  const { results } = await c.env.DB.prepare('SELECT * FROM withdrawals WHERE user_id = ? ORDER BY id DESC LIMIT 50').bind(qid).all();
+  return c.json({ withdrawals: results || [] });
+});
+
+app.post('/api/withdrawals', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const u = await ensureUser(c.env.DB, c.env, body.user, null);
+    const { results } = await c.env.DB.prepare('SELECT * FROM withdrawals WHERE user_id = ? ORDER BY id DESC LIMIT 50').bind(u.id).all();
+    return c.json({ withdrawals: results || [] });
+  } catch { return c.json({ withdrawals: [] }); }
+});
+
+// Admin
+app.get('/api/admin/stats', async (c) => {
+  const users = (await c.env.DB.prepare('SELECT COUNT(*) AS c FROM users').first<any>())?.c || 0;
+  const earned = (await c.env.DB.prepare('SELECT SUM(total_earned) AS s FROM users').first<any>())?.s || 0;
+  const totalBal = (await c.env.DB.prepare('SELECT SUM(balance) AS s FROM users').first<any>())?.s || 0;
+  const pending = (await c.env.DB.prepare("SELECT COUNT(*) AS c FROM withdrawals WHERE status = 'pending'").first<any>())?.c || 0;
+  return c.json({ total_users: users, users, total_earned: earned, earned, total_balance: totalBal, pending_withdrawals: pending });
+});
+
+app.get('/api/admin/withdrawals', async (c) => {
+  const status = c.req.query('status') || 'pending';
+  const { results } = await c.env.DB.prepare(
+    `SELECT w.*, u.username, u.first_name FROM withdrawals w LEFT JOIN users u ON u.id = w.user_id WHERE w.status = ? ORDER BY w.id DESC LIMIT 100`
+  ).bind(status).all();
+  return c.json({ withdrawals: results || [] });
+});
+
+app.post('/api/admin/withdrawals/:id', async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const action = body.action;
+  const id = c.req.param('id');
+  const statusMap: any = { approve: 'approved', reject: 'rejected', processing: 'processing' };
+  const status = statusMap[action] || 'rejected';
+  if (status === 'rejected') {
+    const w = await c.env.DB.prepare('SELECT * FROM withdrawals WHERE id = ?').bind(id).first<any>();
+    if (w && (w.status === 'pending' || w.status === 'processing')) {
+      await c.env.DB.prepare('UPDATE users SET balance = balance + ? WHERE id = ?').bind(w.amount, w.user_id).run();
+    }
+  }
+  await c.env.DB.prepare("UPDATE withdrawals SET status = ?, processed_at = strftime('%s','now') WHERE id = ?").bind(status, id).run();
+  return c.json({ success: true });
+});
+
+app.get('/api/admin/tasks', async (c) => {
+  const { results } = await c.env.DB.prepare('SELECT * FROM tasks ORDER BY id DESC').all();
+  return c.json({ tasks: results || [] });
+});
+app.post('/api/admin/tasks', async (c) => {
+  const b = await c.req.json();
+  const info = await c.env.DB.prepare('INSERT INTO tasks (title, type, link, reward, is_active) VALUES (?, ?, ?, ?, 1)').bind(b.title, b.type || 'telegram', b.link || '', parseFloat(b.reward) || 0).run();
+  return c.json({ success: true, id: info.meta.last_row_id });
+});
+app.delete('/api/admin/tasks/:id', async (c) => {
+  await c.env.DB.prepare('DELETE FROM user_tasks WHERE task_id = ?').bind(c.req.param('id')).run();
+  await c.env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(c.req.param('id')).run();
+  return c.json({ success: true });
+});
+app.get('/api/admin/settings', async (c) => c.json({ settings: await getConfig(c.env.DB, c.env) }));
+app.post('/api/admin/settings', async (c) => {
+  const b = await c.req.json();
+  for (const k of ['tap_reward','referral_reward','min_withdraw','energy_max','energy_cooldown','daily_checkin_reward','streak_bonus'] as const) {
+    if (b[k] !== undefined && b[k] !== null && b[k] !== '') await setSetting(c.env.DB, k, String(b[k]));
+  }
+  if (Array.isArray(b.checkin_day_rewards)) await setSetting(c.env.DB, 'checkin_day_rewards', JSON.stringify(b.checkin_day_rewards.map(Number)));
+  return c.json({ success: true, settings: await getConfig(c.env.DB, c.env) });
+});
+app.get('/api/admin/leaderboard', async (c) => {
+  const limit = Math.min(100, parseInt(c.req.query('limit') || '50', 10));
+  const { results } = await c.env.DB.prepare('SELECT id, username, first_name, balance, total_earned, total_taps, invite_count, is_admin FROM users ORDER BY total_earned DESC LIMIT ?').bind(limit).all();
+  return c.json({ leaderboard: results || [] });
+});
+app.get('/api/admin/referrals', async (c) => {
+  const limit = Math.min(100, parseInt(c.req.query('limit') || '50', 10));
+  const { results } = await c.env.DB.prepare(
+    `SELECT r.*, u1.username as referrer_name, u2.username as referred_name FROM referrals r
+     LEFT JOIN users u1 ON r.referrer_id = u1.id LEFT JOIN users u2 ON r.referred_id = u2.id
+     ORDER BY r.id DESC LIMIT ?`
+  ).bind(limit).all();
+  return c.json({ referrals: results || [] });
+});
+app.get('/api/admin/users/:id', async (c) => {
+  const u = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(c.req.param('id')).first<any>();
+  if (!u) return c.json({ error: 'Not found' }, 404);
+  return c.json({ user: publicUser(u, c.env) });
+});
+app.post('/api/admin/users/:id', async (c) => {
+  const b = await c.req.json();
+  const id = c.req.param('id');
+  await c.env.DB.prepare(
+    `UPDATE users SET balance = COALESCE(?, balance), total_earned = COALESCE(?, total_earned),
+     total_taps = COALESCE(?, total_taps), is_admin = COALESCE(?, is_admin), invite_count = COALESCE(?, invite_count) WHERE id = ?`
+  ).bind(
+    b.balance != null ? parseFloat(b.balance) : null,
+    b.total_earned != null ? parseFloat(b.total_earned) : null,
+    b.total_taps != null ? parseInt(b.total_taps, 10) : null,
+    b.is_admin != null ? (b.is_admin ? 1 : 0) : null,
+    b.invite_count != null ? parseInt(b.invite_count, 10) : null,
+    id
+  ).run();
+  const updated = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<any>();
+  return c.json({ success: true, user: publicUser(updated, c.env) });
+});
+app.delete('/api/admin/users/:id', async (c) => {
+  const id = c.req.param('id');
+  await c.env.DB.prepare('DELETE FROM user_tasks WHERE user_id = ?').bind(id).run();
+  await c.env.DB.prepare('DELETE FROM referrals WHERE referrer_id = ? OR referred_id = ?').bind(id, id).run();
+  await c.env.DB.prepare('DELETE FROM withdrawals WHERE user_id = ?').bind(id).run();
+  await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id).run();
+  return c.json({ success: true });
+});
+app.post('/api/admin/broadcast', async (c) => c.json({ success: true, sent: 0, message: 'Wire Telegram bot token for broadcast' }));
+
+app.all('*', async (c) => {
+  if (c.env.ASSETS) return c.env.ASSETS.fetch(c.req.raw);
+  return c.text('404 — Frontend assets missing. Run: cd frontend && npm run build then wrangler deploy', 404);
+});
+
+export default app;
