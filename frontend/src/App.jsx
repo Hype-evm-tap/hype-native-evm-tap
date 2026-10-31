@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import EthereumProvider from '@walletconnect/ethereum-provider';
 
 const tg = window.Telegram?.WebApp;
 if (tg) {
@@ -26,36 +25,14 @@ function formatNum(n, dec = 10) {
   return s || '0';
 }
 
-// Database timestamps may be Unix seconds, Unix milliseconds, or SQLite TEXT dates.
-function toUnixSeconds(value) {
-  const n = Number(value) || 0;
-  if (!Number.isFinite(n) || n <= 0) return 0;
-  return Math.floor(n > 1e12 ? n / 1000 : n);
-}
-
-function formatDbDate(value) {
-  if (value === null || value === undefined || value === '') return '—';
-  let date;
-  if (typeof value === 'number' || /^\d+$/.test(String(value))) {
-    const n = Number(value);
-    date = new Date(n > 1e12 ? n : n * 1000);
-  } else {
-    const raw = String(value);
-    date = new Date(raw.includes('T') || /[zZ]|[+-]\d\d:\d\d$/.test(raw) ? raw : `${raw.replace(' ', 'T')}Z`);
-  }
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
-}
-
-function formatTime(value) {
-  let sec = Number(value) || 0;
-  if (!Number.isFinite(sec) || sec < 0) sec = 0;
-  // A recharge/check-in should never be more than 48 hours; hide corrupt units.
-  if (sec > 48 * 60 * 60) return '--:--:--';
+function formatTime(sec) {
   if (sec <= 0) return '00:00:00';
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   const s = Math.floor(sec % 60);
-  if (h > 0) return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  if (h > 0) {
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
@@ -113,7 +90,8 @@ const SVGS = {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9l-.81-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
     </svg>
-  ),
+
+),
   chart: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 3v18h18" />
@@ -189,7 +167,8 @@ const SVGS = {
     </svg>
   ),
   flame: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
     </svg>
   ),
@@ -262,16 +241,17 @@ export default function App() {
   const [settingsForm, setSettingsForm] = useState({ tap_reward: '', referral_reward: '', min_withdraw: '', energy_max: '', energy_cooldown: '', daily_checkin_reward: '', streak_bonus: '0', day1: '0.0000089', day2: '0.000002', day3: '0.000006', day4: '0.000007', day5: '0.0000079', day6: '0.0000089', day7: '0.0004' });
   const [canCheckin, setCanCheckin] = useState(true);
   const [checkinWait, setCheckinWait] = useState(0);
+  const [checkinBusy, setCheckinBusy] = useState(false);
+  const checkinInFlight = useRef(false);
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [broadcastPhoto, setBroadcastPhoto] = useState('');
-  const [broadcastSending, setBroadcastSending] = useState(false);
+
+const [broadcastSending, setBroadcastSending] = useState(false);
   const [newTask, setNewTask] = useState({ title: '', type: 'telegram', link: '', reward: '0.0085' });
   const [wdAmount, setWdAmount] = useState('');
-  const [withdrawSubmitting, setWithdrawSubmitting] = useState(false);
   const [wdWallet, setWdWallet] = useState('');
   const [connectedWallet, setConnectedWallet] = useState('');
   const [walletConnecting, setWalletConnecting] = useState(false);
-  const walletProviderRef = useRef(null);
   // Daily check-in streak (7-day)
   const [streak, setStreak] = useState(0);
   const [streakTotalEarned, setStreakTotalEarned] = useState(0);
@@ -295,11 +275,25 @@ export default function App() {
   };
 
   const api = async (path, opts = {}) => {
-    const res = await fetch(API + path, {
-      ...opts,
-      headers: { ...headers(), ...(opts.headers || {}) },
-    });
-    return res.json();
+    try {
+      const res = await fetch(API + path, {
+        ...opts,
+        headers: { ...headers(), ...(opts.headers || {}) },
+      });
+      const text = await res.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { error: text?.slice?.(0, 120) || `HTTP ${res.status}` };
+      }
+      if (!res.ok) {
+        return { error: data.error || data.message || `Request failed (${res.status})`, status: res.status, ...data };
+      }
+      return data;
+    } catch (e) {
+      return { error: e?.message || 'Network error' };
+    }
   };
 
   // Load user
@@ -313,14 +307,14 @@ export default function App() {
       });
       if (data.user) {
         const e = Math.max(0, Number(data.user.energy) || 0);
-        const ra = toUnixSeconds(data.user.energy_reset_at);
+        const ra = Number(data.user.energy_reset_at) || 0;
         setUser(data.user);
         energyRef.current = e;
         setEnergyLeft(e);
         setResetAt(ra);
         setConfig(data.config);
         setPrice(data.price || 0);
-        const lastCheckinAt = toUnixSeconds(data.user.last_checkin_at);
+        const lastCheckinAt = Number(data.user.last_checkin_at) || 0;
         const serverWait = Math.max(0, lastCheckinAt + 86400 - Math.floor(Date.now() / 1000));
         setCheckinWait(serverWait);
         setCanCheckin(data.user.can_checkin !== false && serverWait === 0);
@@ -353,7 +347,8 @@ export default function App() {
       const ctxs = data?.[1] || [];
       const idx = universe.findIndex((u) => u.name === 'HYPE');
       if (idx < 0) return;
-      const ctx = ctxs[idx] || {};
+
+const ctx = ctxs[idx] || {};
       const mark = parseFloat(ctx.markPx || ctx.midPx || 0);
       const prev = parseFloat(ctx.prevDayPx || 0);
       const vol = parseFloat(ctx.dayNtlVlm || 0);
@@ -466,103 +461,186 @@ export default function App() {
     const tick = () => {
       setCheckinWait((current) => {
         const next = Math.max(0, current - 1);
-        if (next === 0) {
-          // Server remains the source of truth; do not show an enabled button early.
-          clearInterval(iv);
-          loadUser();
-        }
+        if (next === 0) setCanCheckin(true);
         return next;
       });
     };
     const iv = setInterval(tick, 1000);
     return () => clearInterval(iv);
-  }, [canCheckin, loadUser]);
+  }, [canCheckin]);
 
-  // HyperEVM wallet connection: WalletConnect modal supports Trust Wallet,
-  // Binance Web3 Wallet and other compatible EVM wallets.
+  const wcProviderRef = useRef(null);
+
+const persistWallet = async (addr) => {
+    const clean = String(addr || '').trim();
+    if (!/^0x[a-fA-F0-9]{40}$/.test(clean)) {
+      showToast('Invalid EVM address');
+      return false;
+    }
+    setConnectedWallet(clean);
+    setWdWallet(clean);
+    const data = await api('/api/wallet', {
+      method: 'POST',
+      body: JSON.stringify({ user: tg?.initDataUnsafe?.user, wallet_address: clean }),
+    });
+    if (data?.error) {
+      showToast(data.error);
+      return false;
+    }
+    showToast('Wallet connected');
+    return true;
+  };
+
+  /** Injected wallet (MetaMask / Rabby) when available */
+  const connectInjected = async () => {
+    let eth = window.ethereum;
+    if (!eth) return null;
+    if (eth.providers?.length) {
+      eth = eth.providers.find((p) => p.isMetaMask) || eth.providers[0];
+    }
+    const accounts = await eth.request({ method: 'eth_requestAccounts' });
+    return accounts?.[0] || null;
+  };
+
+  /**
+   * Resolve WalletConnect Project ID from:
+   * 1) Vite build env  2) window inject  3) /api/config (Cloudflare vars)
+   */
+  const getWcProjectId = async () => {
+    const fromVite = (import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || '').trim();
+    if (fromVite) return fromVite;
+    const fromWindow = (typeof window !== 'undefined' && (window.__WC_PROJECT_ID__ || window.__ENV__?.VITE_WALLETCONNECT_PROJECT_ID)) || '';
+    if (fromWindow) return String(fromWindow).trim();
+    try {
+      const cfg = await api('/api/config');
+      if (cfg?.walletConnectProjectId) return String(cfg.walletConnectProjectId).trim();
+    } catch (_) {}
+    return '';
+  };
+
+  /**
+   * WalletConnect v2 — MetaMask / Trust / Binance / Rainbow via QR + deep link
+   * npm i @walletconnect/ethereum-provider
+   */
+  const connectWalletConnect = async () => {
+    const projectId = await getWcProjectId();
+    if (!projectId) {
+      throw new Error('WalletConnect Project ID missing (VITE_WALLETCONNECT_PROJECT_ID)');
+    }
+
+    const { default: EthereumProvider } = await import('@walletconnect/ethereum-provider');
+
+    if (wcProviderRef.current) {
+      try { await wcProviderRef.current.disconnect(); } catch (_) {}
+      wcProviderRef.current = null;
+    }
+
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://localhost';
+
+    // chains is REQUIRED (empty optionalChains-only → "configuration not found")
+    const provider = await EthereumProvider.init({
+      projectId,
+      chains: [1],
+      optionalChains: [56, 999], // BSC (Binance) + Hyperliquid EVM
+      showQrModal: true,
+      methods: [
+        'eth_sendTransaction',
+        'eth_signTransaction',
+        'eth_sign',
+        'personal_sign',
+        'eth_signTypedData',
+        'eth_signTypedData_v4',
+        'eth_accounts',
+        'eth_requestAccounts',
+      ],
+      events: ['chainChanged', 'accountsChanged', 'disconnect', 'session_delete'],
+      rpcMap: {
+        1: 'https://ethereum.publicnode.com',
+        56: 'https://bsc-dataseed.binance.org',
+        999: 'https://rpc.hyperliquid.xyz/evm',
+      },
+      metadata: {
+        name: 'Hype Token',
+        description: 'Hype EVM Native — Tap to Earn',
+        url: origin,
+        icons: [`${origin}/hype-logo.png`],
+      },
+      qrModalOptions: {
+        themeMode: 'dark',
+        themeVariables: {
+          '--wcm-z-index': '100000',
+          '--w3m-z-index': '100000',
+        },
+      },
+    });
+
+    wcProviderRef.current = provider;
+
+    provider.on('accountsChanged', (accounts) => {
+      if (accounts?.[0]) persistWallet(accounts[0]);
+      else {
+        setConnectedWallet('');
+        setWdWallet('');
+      }
+    });
+    provider.on('disconnect', () => {
+      setConnectedWallet('');
+      setWdWallet('');
+      wcProviderRef.current = null;
+    });
+    provider.on('session_delete', () => {
+      setConnectedWallet('');
+      setWdWallet('');
+      wcProviderRef.current = null;
+    });
+
+// enable() opens QR modal and waits for wallet approval
+    await provider.enable();
+    const accounts = provider.accounts?.length
+      ? provider.accounts
+      : await provider.request({ method: 'eth_accounts' });
+    return accounts?.[0] || null;
+  };
+
   const connectExternalWallet = async () => {
-    if (connectedWallet || walletConnecting) return;
+    if (connectedWallet) return;
     setWalletConnecting(true);
     try {
-      const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
-      if (!projectId) {
-        showToast('WalletConnect Project ID is not configured');
-        return;
+      // 1) Injected browser wallet
+      try {
+        const injected = await connectInjected();
+        if (injected) {
+          await persistWallet(injected);
+          return;
+        }
+      } catch (e) {
+        console.warn('Injected wallet failed:', e);
       }
 
-      const provider = await EthereumProvider.init({
-        projectId,
-        chains: [999],
-        optionalChains: [999],
-        showQrModal: true,
-        methods: [
-          'eth_sendTransaction',
-          'eth_signTransaction',
-          'eth_sign',
-          'personal_sign',
-          'eth_signTypedData',
-          'eth_signTypedData_v4',
-          'eth_requestAccounts',
-          'wallet_switchEthereumChain',
-          'wallet_addEthereumChain'
-        ],
-        events: ['chainChanged', 'accountsChanged', 'disconnect'],
-        metadata: {
-          name: 'Hype Token',
-          description: 'Hype Token on HyperEVM',
-          url: window.location.origin,
-          icons: [`${window.location.origin}/hype-logo.png`]
-        },
-        rpcMap: { 999: 'https://rpc.hyperliquid.xyz/evm' }
-      });
-
-      walletProviderRef.current = provider;
-      await provider.connect();
-
-      const chainId = Number(provider.chainId);
-      if (chainId !== 999) {
-        try {
-          await provider.request({
-            method: 'wallet_switchEthereumChain',
-            params: [{ chainId: '0x3e7' }]
-          });
-        } catch (switchError) {
-          if (switchError?.code === 4902) {
-            await provider.request({
-              method: 'wallet_addEthereumChain',
-              params: [{
-                chainId: '0x3e7',
-                chainName: 'HyperEVM',
-                nativeCurrency: { name: 'HYPE', symbol: 'HYPE', decimals: 18 },
-                rpcUrls: ['https://rpc.hyperliquid.xyz/evm'],
-                blockExplorerUrls: ['https://hyperevmscan.io']
-              }]
-            });
-          } else {
-            throw new Error('Please switch your wallet to HyperEVM (Chain ID 999).');
-          }
+      // 2) WalletConnect v2 modal (MetaMask mobile, Trust, Rainbow, etc.)
+      try {
+        const addr = await connectWalletConnect();
+        if (addr) {
+          await persistWallet(addr);
+          return;
+        }
+        showToast('No account returned from WalletConnect');
+        return;
+      } catch (e) {
+        console.warn('WalletConnect failed:', e);
+        const msg = e?.message || '';
+        if (msg.includes('VITE_WALLETCONNECT_PROJECT_ID')) {
+          showToast('WalletConnect Project ID set nahi hai');
+        } else if (msg.includes('Failed to fetch') || msg.includes('Cannot find module') || msg.includes('@walletconnect')) {
+          showToast('Install: npm i @walletconnect/ethereum-provider');
+        } else if (msg.includes('User rejected') || msg.includes('denied')) {
+          showToast('Connection cancelled');
+        } else {
+          showToast(msg.slice(0, 80) || 'WalletConnect failed');
         }
       }
-
-      const accounts = await provider.request({ method: 'eth_requestAccounts' });
-      const addr = accounts?.[0];
-      if (!addr) throw new Error('No wallet account was selected.');
-
-      setConnectedWallet(addr);
-      setWdWallet(addr);
-      await api('/api/wallet', {
-        method: 'POST',
-        body: JSON.stringify({
-          user: tg?.initDataUnsafe?.user,
-          wallet_address: addr,
-          network: 'HyperEVM',
-          chain_id: 999
-        })
-      });
-      showToast('HyperEVM wallet connected');
     } catch (e) {
-      console.error('Wallet connection failed:', e);
-      showToast(e?.message || 'Wallet connection failed');
+      showToast(e?.message || 'Connection failed');
     } finally {
       setWalletConnecting(false);
     }
@@ -570,13 +648,11 @@ export default function App() {
 
   const disconnectWallet = async () => {
     try {
-      if (walletProviderRef.current) {
-        await walletProviderRef.current.disconnect();
-        walletProviderRef.current = null;
+      if (wcProviderRef.current) {
+        await wcProviderRef.current.disconnect();
+        wcProviderRef.current = null;
       }
-    } catch (e) {
-      console.warn('Wallet disconnect:', e);
-    }
+    } catch (_) {}
     setConnectedWallet('');
     setWdWallet('');
     try {
@@ -591,36 +667,63 @@ export default function App() {
   const shortAddr = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '');
 
   const doCheckin = async () => {
+    // Prevent duplicate requests while a claim is being processed.
+    if (checkinInFlight.current) return;
     if (!canCheckin) {
       showToast(`Next check-in in ${formatTime(checkinWait)}`);
       return;
     }
-    const data = await api('/api/checkin', {
-      method: 'POST',
-      body: JSON.stringify({ user: tg?.initDataUnsafe?.user }),
-    });
-    if (data.success) {
-      const day = data.streak || (streak + 1);
-      showToast(`Day ${day} Check-in +${formatNum(data.reward, 12)} HYPE`);
-      setCanCheckin(false);
-      setCheckinWait(Math.max(0, Number(data.wait_seconds) || 86400));
-      if (data.streak != null) setStreak(data.streak);
-      else setStreak((x) => Math.min(7, x + 1));
-      if (data.streak_total != null) setStreakTotalEarned(data.streak_total);
-      if (Number.isFinite(Number(data.balance))) {
-        setUser((u) => u ? { ...u, balance: Number(data.balance), total_earned: Number(u.total_earned || 0) + Number(data.reward || 0), last_checkin_at: data.last_checkin_at || Math.floor(Date.now() / 1000) } : u);
+    checkinInFlight.current = true;
+    setCheckinBusy(true);
+    try {
+      const tgUser = tg?.initDataUnsafe?.user || { id: 0, first_name: 'Guest' };
+      const data = await api('/api/checkin', {
+        method: 'POST',
+        body: JSON.stringify({ user: tgUser }),
+      });
+
+      if (data?.success) {
+        const day = Number(data.day || data.streak || (streak + 1));
+        showToast(`Day ${day} Check-in +${formatNum(data.reward, 12)} HYPE`);
+        setCanCheckin(false);
+        setCheckinWait(86400);
+        if (data.streak != null) setStreak(Number(data.streak));
+        else setStreak((x) => Math.min(7, x + 1));
+        if (data.streak_total != null) setStreakTotalEarned(Number(data.streak_total));
+        if (data.balance != null) {
+          setUser((u) =>
+            u
+              ? {
+                  ...u,
+                  balance: data.balance,
+                  total_earned: Number(u.total_earned || 0) + Number(data.reward || 0),
+                  last_checkin_at: data.last_checkin_at || Math.floor(Date.now() / 1000),
+                }
+              : u
+          );
+        }
+        await loadUser();
+      } else if (data?.already) {
+        setCanCheckin(false);
+        setCheckinWait(Math.max(1, Number(data.wait_seconds) || 86400));
+
+showToast(data.error || 'Already checked in today');
+      } else if (data?.reset) {
+        setStreak(0);
+        showToast('Streak reset — start again from Day 1');
+        await loadUser();
+      } else {
+        // Show real backend error (404 = route missing, 500 = DB column missing, etc.)
+        const msg = data?.error || data?.message || 'Check-in failed';
+        console.error('Check-in failed payload:', data);
+        showToast(msg);
       }
-      loadUser();
-    } else if (data.already) {
-      setCanCheckin(false);
-      if (data.wait_seconds) setCheckinWait(data.wait_seconds);
-      showToast('Already checked in today');
-    } else if (data.reset) {
-      setStreak(0);
-      showToast('Streak reset — start again from Day 1');
-      loadUser();
-    } else {
-      showToast(data.error || 'Check-in failed');
+    } catch (error) {
+      console.error('Check-in request failed:', error);
+      showToast(error?.message || 'Check-in request failed');
+    } finally {
+      checkinInFlight.current = false;
+      setCheckinBusy(false);
     }
   };
 
@@ -656,11 +759,11 @@ export default function App() {
         }));
         if (finalEnergy <= 0) {
           const ra =
-            toUnixSeconds(data.energy_reset_at) ||
+            data.energy_reset_at ||
             Math.floor(Date.now() / 1000) + (config?.energy_cooldown || 3600);
           setResetAt(ra);
         } else {
-          setResetAt(toUnixSeconds(data.energy_reset_at));
+          setResetAt(data.energy_reset_at || 0);
         }
         if (data.earned > 0) {
           tg?.HapticFeedback?.impactOccurred?.('light');
@@ -670,7 +773,7 @@ export default function App() {
         const serverEnergy = Math.max(0, Number(data.energy) || 0);
         energyRef.current = serverEnergy;
         setEnergyLeft(serverEnergy);
-        if (data.energy_reset_at) setResetAt(toUnixSeconds(data.energy_reset_at));
+        if (data.energy_reset_at) setResetAt(data.energy_reset_at);
       }
     } catch {
       showToast('Tap failed');
@@ -714,7 +817,8 @@ export default function App() {
     // Optimistic decrease via ref (no stale state)
     const next = Math.max(0, energyRef.current - 1);
     energyRef.current = next;
-    setEnergyLeft(next);
+
+setEnergyLeft(next);
     if (next === 0) {
       const cooldown = config?.energy_cooldown || 3600;
       const until = Math.floor(Date.now() / 1000) + cooldown;
@@ -803,7 +907,8 @@ export default function App() {
     if (settingsForm.daily_checkin_reward !== '') body.daily_checkin_reward = parseFloat(settingsForm.daily_checkin_reward);
     body.streak_bonus = 0; // No additional 7-day bonus; Day 7 reward is the full reward.
     const dayRewards = [settingsForm.day1, settingsForm.day2, settingsForm.day3, settingsForm.day4, settingsForm.day5, settingsForm.day6, settingsForm.day7]
-      .map((v) => (v !== '' ? parseFloat(v) : null));
+
+.map((v) => (v !== '' ? parseFloat(v) : null));
     if (dayRewards.some((v) => v != null)) body.checkin_day_rewards = dayRewards.map((v, i) => v != null ? v : (checkinRewards[i] || 0));
     const data = await api('/api/admin/settings', {
       method: 'POST',
@@ -907,9 +1012,6 @@ export default function App() {
   };
 
   const requestWithdraw = async () => {
-    if (withdrawSubmitting) return;
-    setWithdrawSubmitting(true);
-    try {
     const amount = parseFloat(wdAmount);
     if (!amount || amount < (config?.min_withdraw || 1)) {
       showToast(`Min ${config?.min_withdraw || 1} HYPE`);
@@ -922,7 +1024,8 @@ export default function App() {
     const data = await api('/api/withdraw', {
       method: 'POST',
       body: JSON.stringify({
-        user: tg?.initDataUnsafe?.user,
+
+user: tg?.initDataUnsafe?.user,
         amount,
         wallet_address: connectedWallet,
       }),
@@ -930,20 +1033,10 @@ export default function App() {
     if (data.success) {
       showToast('Request submitted!');
       setWdAmount('');
-      if (Number.isFinite(Number(data.balance))) {
-        setUser((u) => u ? { ...u, balance: Number(data.balance) } : u);
-      }
-      await loadUser();
-      const history = await api('/api/withdrawals');
-      setWithdrawals(history.withdrawals || []);
+      loadUser();
+      api('/api/withdrawals').then((d) => setWithdrawals(d.withdrawals || []));
     } else {
       showToast(data.error || 'Failed');
-    }
-    } catch (e) {
-      console.error('Withdrawal request failed:', e);
-      showToast('Withdrawal request failed. Please retry.');
-    } finally {
-      setWithdrawSubmitting(false);
     }
   };
 
@@ -1051,7 +1144,8 @@ export default function App() {
         <div className="header-right">
           {connectedWallet ? (
             <button className="connect-wallet-btn connected" onClick={disconnectWallet} title={connectedWallet}>
-              <Icon name="wallet" size={14} /> Connected
+
+<Icon name="wallet" size={14} /> Connected
             </button>
           ) : (
             <button className="connect-wallet-btn" onClick={connectExternalWallet} disabled={walletConnecting}>
@@ -1148,7 +1242,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="hl-native-tag">
+<div className="hl-native-tag">
             Hyperliquid Native
           </div>
 
@@ -1235,7 +1329,8 @@ export default function App() {
                       const x = (i / (n - 1)) * 320;
                       const y = topPad + chartH - ((c.c - minP) / range) * chartH;
                       return [x, y];
-                    });
+
+});
                     const line = pts.map((p) => p.join(',')).join(' ');
                     const area = `0,${topPad + chartH} ${line} 320,${topPad + chartH}`;
                     const last = pts[pts.length - 1];
@@ -1331,7 +1426,8 @@ export default function App() {
               {[1,2,3,4,5,6,7].map((d) => {
                 const claimed = streak >= d;
                 const current = canCheckin && streak + 1 === d;
-                const locked = !claimed && !current;
+
+const locked = !claimed && !current;
                 const reward = checkinRewards[d - 1] ?? (d * 50);
                 return (
                   <div
@@ -1365,13 +1461,17 @@ export default function App() {
             </div>
 
             <button
-              className={`claim-btn checkin-now ${!canCheckin ? 'claim-disabled' : ''}`}
+              type="button"
+              className={`claim-btn checkin-now ${(!canCheckin || checkinBusy) ? 'claim-disabled' : ''}`}
               onClick={doCheckin}
-              disabled={!canCheckin}
+              disabled={!canCheckin || checkinBusy}
+              aria-label={checkinBusy ? 'Processing daily check-in' : canCheckin ? 'Claim daily check-in' : `Next check-in in ${formatTime(checkinWait)}`}
             >
-              {canCheckin
-                ? <><Icon name="check" size={18} /> Check In Now</>
-                : <><Icon name="clock" size={18} /> Next in {formatTime(checkinWait)}</>}
+              {checkinBusy
+                ? <><Icon name="clock" size={18} /> Processing…</>
+                : canCheckin
+                  ? <><Icon name="check" size={18} /> Check In Now</>
+                  : <><Icon name="clock" size={18} /> Next in {formatTime(checkinWait)}</>}
             </button>
           </div>
 
@@ -1413,7 +1513,8 @@ export default function App() {
       {tab === 'friends' && (
         <div className="page">
           <div className="card">
-            <div className="card-title">Your Invite Link</div>
+
+<div className="card-title">Your Invite Link</div>
             <div
               style={{
                 background: 'rgba(0,20,10,0.6)',
@@ -1500,8 +1601,9 @@ export default function App() {
             ) : (
               <div className="wallet-connect-box">
                 <p style={{ color: '#a0ffc0', fontSize: '0.85rem', marginBottom: 12 }}>
-                  Connect with Trust Wallet, Binance Wallet or another WalletConnect-compatible wallet on HyperEVM.
-                </p>
+                  Connect your external wallet (MetaMask / WalletConnect browser) to withdraw.
+
+</p>
                 <button className="btn btn-primary" style={{ width: '100%' }} onClick={connectExternalWallet} disabled={walletConnecting}>
                   <Icon name="wallet" size={16} /> {walletConnecting ? 'Connecting…' : 'Connect Wallet'}
                 </button>
@@ -1536,9 +1638,9 @@ export default function App() {
               className="btn btn-primary"
               style={{ width: '100%' }}
               onClick={requestWithdraw}
-              disabled={!connectedWallet || withdrawSubmitting}
+              disabled={!connectedWallet}
             >
-              {withdrawSubmitting ? 'Submitting…' : connectedWallet ? 'Request Withdrawal' : 'Connect wallet first'}
+              {connectedWallet ? 'Request Withdrawal' : 'Connect wallet first'}
             </button>
           </div>
 
@@ -1563,7 +1665,7 @@ export default function App() {
                   </span>
                 </div>
                 <div style={{ fontSize: '0.75rem', color: '#666', marginTop: 2 }}>
-                  {formatDbDate(w.created_at)}
+                  {new Date(w.created_at * 1000).toLocaleString()}
                 </div>
               </div>
             ))}
@@ -1596,7 +1698,7 @@ export default function App() {
             </div>
           )}
 
-          {/* SETTINGS - manage tap reward, energy, etc. */}
+{/* SETTINGS - manage tap reward, energy, etc. */}
           {adminTab === 'settings' && (
             <div className="card">
               <div className="card-title"><Icon name="settings" size={16} /> Live App Controls</div>
@@ -1652,7 +1754,8 @@ export default function App() {
               </button>
               {adminSettings && (
                 <div style={{ marginTop: 12, fontSize: '0.8rem', color: 'rgba(0,255,136,0.7)', lineHeight: 1.5 }}>
-                  <strong>Live values:</strong><br />
+
+<strong>Live values:</strong><br />
                   Tap: {formatNum(adminSettings.tap_reward, 12)} • Referral: {formatNum(adminSettings.referral_reward, 12)}<br />
                   Min WD: {formatNum(adminSettings.min_withdraw, 8)} • Energy: {adminSettings.energy_max} / {adminSettings.energy_cooldown}s<br />
                   Day 1–7 rewards: {formatNum(checkinRewards[0], 12)}, {formatNum(checkinRewards[1], 12)}, {formatNum(checkinRewards[2], 12)}, {formatNum(checkinRewards[3], 12)}, {formatNum(checkinRewards[4], 12)}, {formatNum(checkinRewards[5], 12)}, {formatNum(checkinRewards[6], 12)} HYPE
@@ -1703,7 +1806,8 @@ export default function App() {
 
               <div className="card-title" style={{ margin: '12px 0 8px', color: '#00ff88' }}>Top Users (Leaderboard)</div>
               {adminLeaderboard.length === 0 && <div className="card">No users yet</div>}
-              {adminLeaderboard.map((u, i) => (
+
+{adminLeaderboard.map((u, i) => (
                 <div className="card" key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px' }}>
                   <div>
                     <div style={{ fontWeight: 700 }}>#{i + 1} @{u.username || u.first_name || u.id}</div>
@@ -1776,7 +1880,8 @@ export default function App() {
                   <option value="youtube">YouTube</option>
                 </select>
                 <input className="input" placeholder="Link" value={newTask.link} onChange={(e) => setNewTask({ ...newTask, link: e.target.value })} />
-                <input className="input" placeholder="Reward HYPE" value={newTask.reward} onChange={(e) => setNewTask({ ...newTask, reward: e.target.value })} />
+
+<input className="input" placeholder="Reward HYPE" value={newTask.reward} onChange={(e) => setNewTask({ ...newTask, reward: e.target.value })} />
                 <button className="btn btn-primary" style={{ width: '100%' }} onClick={addTask}>
                   Add Task
                 </button>
@@ -1855,7 +1960,8 @@ export default function App() {
           <span className="nav-label">Tasks</span>
         </button>
         <button className={`nav-item ${tab === 'friends' ? 'active' : ''}`} onClick={() => setTab('friends')}>
-          <span className="nav-icon-wrap"><Icon name="users" size={22} /></span>
+
+<span className="nav-icon-wrap"><Icon name="users" size={22} /></span>
           <span className="nav-label">Friends</span>
         </button>
         <button className={`nav-item ${tab === 'leaderboard' ? 'active' : ''}`} onClick={() => setTab('leaderboard')}>
