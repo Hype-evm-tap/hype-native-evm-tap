@@ -286,43 +286,48 @@ body {
 .tap-glow-core {
   position: absolute;
   left: 50%;
-  top: 48%;
+  top: 45%;
   transform: translate(-50%, -50%);
-  width: 280px;
-  height: 280px;
+  width: 320px;
+  height: 320px;
   border-radius: 50%;
   background: radial-gradient(circle,
-    rgba(0, 255, 140, 0.2) 0%,
-    rgba(0, 160, 80, 0.08) 40%,
-    transparent 70%);
-  filter: blur(18px);
-  animation: tapGlowPulse 3.5s ease-in-out infinite;
+    rgba(0, 255, 150, 0.28) 0%,
+    rgba(0, 180, 90, 0.12) 35%,
+    rgba(0, 80, 40, 0.06) 55%,
+    transparent 72%);
+  filter: blur(20px);
+  animation: tapGlowPulse 3.2s ease-in-out infinite;
   z-index: 0;
 }
 
 @keyframes tapGlowPulse {
-  0%, 100% { opacity: 0.75; transform: translate(-50%, -50%) scale(1); }
-  50%      { opacity: 1;    transform: translate(-50%, -50%) scale(1.06); }
+  0%, 100% { opacity: 0.8; transform: translate(-50%, -50%) scale(1); }
+  50%      { opacity: 1;   transform: translate(-50%, -50%) scale(1.08); }
 }
 
 .tap-rock {
   position: absolute;
   background:
-    linear-gradient(135deg, rgba(0, 255, 136, 0.35) 0%, rgba(0, 80, 40, 0.5) 40%, rgba(5, 18, 10, 0.95) 100%);
+    linear-gradient(145deg,
+      rgba(0, 255, 140, 0.45) 0%,
+      rgba(0, 100, 50, 0.55) 35%,
+      rgba(8, 22, 12, 0.95) 100%);
   clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);
   box-shadow:
-    0 0 14px rgba(0, 255, 136, 0.35),
-    inset 0 0 10px rgba(0, 255, 136, 0.15);
-  opacity: 0.75;
+    0 0 18px rgba(0, 255, 136, 0.45),
+    inset 0 0 12px rgba(0, 255, 136, 0.2);
+  opacity: 0.85;
   animation: rockFloat 12s ease-in-out infinite;
+  z-index: 1;
 }
 
-.tap-rock.r1 { width: 38px; height: 50px; top: 2%;  left: 3%;  animation-duration: 14s; }
-.tap-rock.r2 { width: 50px; height: 66px; top: 5%;  right: 1%; animation-duration: 16s; animation-delay: -3s; }
-.tap-rock.r3 { width: 28px; height: 38px; top: 52%; left: 2%;  animation-duration: 11s; animation-delay: -1s; }
-.tap-rock.r4 { width: 44px; height: 58px; top: 58%; right: 3%; animation-duration: 15s; animation-delay: -5s; }
-.tap-rock.r5 { width: 22px; height: 30px; top: 22%; left: 12%; animation-duration: 13s; animation-delay: -2s; opacity: 0.5; }
-.tap-rock.r6 { width: 32px; height: 42px; top: 12%; right: 15%; animation-duration: 17s; animation-delay: -7s; opacity: 0.55; }
+.tap-rock.r1 { width: 42px; height: 56px; top: 1%;  left: 2%;  animation-duration: 14s; }
+.tap-rock.r2 { width: 54px; height: 72px; top: 3%;  right: 0%; animation-duration: 16s; animation-delay: -3s; }
+.tap-rock.r3 { width: 30px; height: 42px; top: 50%; left: 1%;  animation-duration: 11s; animation-delay: -1s; }
+.tap-rock.r4 { width: 48px; height: 64px; top: 55%; right: 1%; animation-duration: 15s; animation-delay: -5s; }
+.tap-rock.r5 { width: 24px; height: 34px; top: 20%; left: 10%; animation-duration: 13s; animation-delay: -2s; opacity: 0.6; }
+.tap-rock.r6 { width: 36px; height: 48px; top: 10%; right: 12%; animation-duration: 17s; animation-delay: -7s; opacity: 0.65; }
 
 @keyframes rockFloat {
   0%, 100% { transform: translate(0, 0) rotate(0deg); }
@@ -355,131 +360,165 @@ body {
 }
 
 .logo-img {
-  width: 125px;
-  height: 125px;
+  width: 128px;
+  height: 128px;
   object-fit: contain;
   position: relative;
-  z-index: 8;
+  z-index: 10;
   filter:
-    drop-shadow(0 14px 18px rgba(0, 255, 136, 0.4))
-    drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
+    drop-shadow(0 22px 28px rgba(0, 255, 136, 0.55))
+    drop-shadow(0 8px 16px rgba(0, 0, 0, 0.6))
+    drop-shadow(0 0 20px rgba(0, 255, 160, 0.35));
   animation: logoPulse 2.8s ease-in-out infinite;
 }
 
 @keyframes logoPulse {
   0%, 100% {
     filter:
-      drop-shadow(0 14px 16px rgba(0, 255, 136, 0.35))
-      drop-shadow(0 4px 10px rgba(0, 0, 0, 0.45));
+      drop-shadow(0 20px 24px rgba(0, 255, 136, 0.45))
+      drop-shadow(0 6px 14px rgba(0, 0, 0, 0.55))
+      drop-shadow(0 0 16px rgba(0, 255, 160, 0.3));
   }
   50% {
     filter:
-      drop-shadow(0 16px 22px rgba(0, 255, 136, 0.5))
-      drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
+      drop-shadow(0 24px 32px rgba(0, 255, 136, 0.65))
+      drop-shadow(0 8px 16px rgba(0, 0, 0, 0.6))
+      drop-shadow(0 0 28px rgba(0, 255, 160, 0.45));
   }
 }
 
-/* Solid multi-tier plate */
+/* ========== SOLID 3D MULTI-TIER PLATFORM (cinematic) ========== */
 .logo-platform {
   position: absolute;
   left: 50%;
-  top: 62%;
+  top: 58%;
   transform: translateX(-50%);
-  width: 260px;
-  height: 140px;
+  width: 280px;
+  height: 180px;
   z-index: 1;
   pointer-events: none;
-  perspective: 900px;
+  perspective: 1200px;
+  transform-style: preserve-3d;
 }
 
+/* Strong vertical energy beam from platform up through coin */
 .logo-platform-beam {
   position: absolute;
   left: 50%;
-  top: -55%;
+  top: -90px;
   transform: translateX(-50%);
-  width: 90px;
-  height: 160px;
+  width: 70px;
+  height: 200px;
   background: linear-gradient(180deg,
-    rgba(0, 255, 180, 0.15) 0%,
-    rgba(0, 255, 150, 0.55) 25%,
-    rgba(0, 255, 136, 0.35) 50%,
-    rgba(0, 200, 100, 0.12) 75%,
+    rgba(0, 255, 200, 0.05) 0%,
+    rgba(0, 255, 160, 0.55) 20%,
+    rgba(0, 255, 136, 0.85) 45%,
+    rgba(0, 220, 120, 0.4) 70%,
     transparent 100%);
-  filter: blur(10px);
-  border-radius: 40%;
-  opacity: 0.95;
-  animation: beamPulse 2.4s ease-in-out infinite;
+  filter: blur(8px);
+  border-radius: 50%;
+  opacity: 1;
+  animation: beamPulse 2.2s ease-in-out infinite;
   z-index: 0;
   pointer-events: none;
+  box-shadow: 0 0 40px rgba(0, 255, 136, 0.5);
 }
 
 @keyframes beamPulse {
-  0%, 100% { opacity: 0.8; transform: translateX(-50%) scaleY(1) scaleX(1); }
-  50%      { opacity: 1;   transform: translateX(-50%) scaleY(1.08) scaleX(1.05); }
+  0%, 100% { opacity: 0.75; transform: translateX(-50%) scaleY(1) scaleX(1); }
+  50%      { opacity: 1;    transform: translateX(-50%) scaleY(1.12) scaleX(1.08); }
 }
 
+/* Main solid metallic base – thick ellipse */
 .logo-platform-base {
   position: absolute;
   left: 50%;
-  top: 42%;
-  transform: translate(-50%, -50%) rotateX(72deg);
-  width: 220px;
-  height: 72px;
+  top: 55%;
+  transform: translate(-50%, -50%) rotateX(68deg);
+  width: 240px;
+  height: 88px;
   border-radius: 50%;
   background:
-    radial-gradient(ellipse at 50% 28%,
-      rgba(0, 255, 170, 0.9) 0%,
-      rgba(0, 220, 120, 0.6) 25%,
-      rgba(0, 100, 50, 0.7) 55%,
-      rgba(0, 35, 18, 0.95) 100%);
-  border: 3px solid rgba(0, 255, 160, 0.9);
+    radial-gradient(ellipse at 50% 25%,
+      rgba(0, 255, 180, 1) 0%,
+      rgba(0, 230, 130, 0.85) 18%,
+      rgba(0, 140, 70, 0.9) 42%,
+      rgba(0, 50, 25, 0.98) 70%,
+      rgba(0, 20, 10, 1) 100%);
+  border: 4px solid rgba(0, 255, 170, 1);
   box-shadow:
-    0 0 50px rgba(0, 255, 136, 0.7),
-    0 0 100px rgba(0, 255, 136, 0.35),
-    inset 0 0 35px rgba(0, 255, 150, 0.4),
-    inset 0 14px 20px rgba(255, 255, 230, 0.2);
-  z-index: 2;
+    0 0 40px rgba(0, 255, 136, 0.9),
+    0 0 90px rgba(0, 255, 136, 0.45),
+    0 18px 30px rgba(0, 0, 0, 0.65),
+    inset 0 0 40px rgba(0, 255, 160, 0.5),
+    inset 0 18px 25px rgba(255, 255, 230, 0.25),
+    inset 0 -12px 20px rgba(0, 0, 0, 0.4);
+  z-index: 3;
 }
 
+/* Inner bright core of the base */
 .logo-platform-base::before {
   content: '';
   position: absolute;
   left: 50%;
-  top: 50%;
+  top: 48%;
   transform: translate(-50%, -50%);
-  width: 70%;
-  height: 55%;
+  width: 68%;
+  height: 52%;
   border-radius: 50%;
   background: radial-gradient(ellipse at 50% 30%,
-    rgba(0, 255, 180, 0.5) 0%,
-    rgba(0, 180, 90, 0.25) 50%,
-    transparent 80%);
-  border: 1.5px solid rgba(0, 255, 160, 0.4);
+    rgba(180, 255, 220, 0.7) 0%,
+    rgba(0, 255, 170, 0.45) 40%,
+    rgba(0, 180, 90, 0.2) 70%,
+    transparent 90%);
+  border: 2px solid rgba(0, 255, 180, 0.6);
+  box-shadow: inset 0 0 18px rgba(0, 255, 180, 0.4);
 }
 
+/* Secondary thicker ring under the base for solid depth */
+.logo-platform-base::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 62%;
+  transform: translate(-50%, -50%);
+  width: 112%;
+  height: 70%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse,
+    rgba(0, 80, 40, 0.6) 0%,
+    rgba(0, 30, 15, 0.85) 50%,
+    transparent 75%);
+  border: 2px solid rgba(0, 180, 90, 0.4);
+  z-index: -1;
+  filter: blur(1px);
+}
+
+/* Soft outer glow under everything */
 .logo-platform-glow {
   position: absolute;
   left: 50%;
-  top: 48%;
+  top: 58%;
   transform: translate(-50%, -50%);
-  width: 250px;
-  height: 90px;
+  width: 300px;
+  height: 110px;
   border-radius: 50%;
   background: radial-gradient(ellipse,
-    rgba(0, 255, 160, 0.85) 0%,
-    rgba(0, 230, 120, 0.4) 35%,
-    rgba(0, 100, 50, 0.15) 60%,
+    rgba(0, 255, 160, 0.9) 0%,
+    rgba(0, 230, 120, 0.5) 30%,
+    rgba(0, 120, 60, 0.2) 55%,
     transparent 78%);
-  filter: blur(6px);
-  animation: platformPulse 2.5s ease-in-out infinite;
+  filter: blur(10px);
+  animation: platformPulse 2.4s ease-in-out infinite;
   z-index: 1;
 }
 
 @keyframes platformPulse {
   0%, 100% { opacity: 0.85; transform: translate(-50%, -50%) scaleX(1); }
-  50%      { opacity: 1;    transform: translate(-50%, -50%) scaleX(1.06); }
+  50%      { opacity: 1;    transform: translate(-50%, -50%) scaleX(1.07); }
 }
 
+/* Concentric metallic rings – solid look */
 .logo-platform .logo-ring {
   position: absolute;
   left: 50%;
@@ -489,68 +528,74 @@ body {
   background: none !important;
   inset: auto !important;
   border-style: solid;
-  transform: translateX(-50%) rotateX(72deg);
-  border-top-color: rgba(0, 255, 180, 1);
-  border-bottom-color: rgba(0, 70, 35, 0.5);
-  border-left-color: rgba(240, 216, 120, 0.55);
-  border-right-color: rgba(0, 240, 130, 0.65);
+  transform: translateX(-50%) rotateX(68deg);
+  border-top-color: rgba(0, 255, 190, 1);
+  border-bottom-color: rgba(0, 60, 30, 0.7);
+  border-left-color: rgba(240, 216, 120, 0.65);
+  border-right-color: rgba(0, 255, 150, 0.8);
   filter: none !important;
   opacity: 1;
-  z-index: 4;
+  z-index: 5;
 }
 
 .logo-platform .ring-inner {
-  top: 22px;
-  width: 110px;
-  height: 32px;
-  border-width: 3.5px;
+  top: 28px;
+  width: 120px;
+  height: 38px;
+  border-width: 4px;
   box-shadow:
-    0 0 20px rgba(0, 255, 136, 0.75),
-    inset 0 0 14px rgba(0, 255, 136, 0.3);
-  animation: platformRingSpin 9s linear infinite;
+    0 0 25px rgba(0, 255, 136, 0.9),
+    0 0 10px rgba(240, 216, 120, 0.4),
+    inset 0 0 16px rgba(0, 255, 160, 0.4);
+  animation: platformRingSpin 8s linear infinite;
 }
 
 .logo-platform .ring-mid {
-  top: 30px;
-  width: 165px;
-  height: 48px;
-  border-width: 3px;
+  top: 38px;
+  width: 180px;
+  height: 55px;
+  border-width: 3.5px;
   opacity: 0.95;
-  box-shadow: 0 0 24px rgba(0, 255, 136, 0.5);
-  animation: platformRingSpin 13s linear infinite reverse;
+  box-shadow:
+    0 0 28px rgba(0, 255, 136, 0.65),
+    inset 0 0 12px rgba(0, 255, 136, 0.2);
+  animation: platformRingSpin 12s linear infinite reverse;
 }
 
 .logo-platform .ring-outer {
-  top: 38px;
-  width: 225px;
-  height: 64px;
-  border-width: 2.5px;
-  opacity: 0.8;
-  box-shadow: 0 0 30px rgba(0, 255, 136, 0.35);
-  animation: platformRingSpin 18s linear infinite;
+  top: 48px;
+  width: 245px;
+  height: 72px;
+  border-width: 3px;
+  opacity: 0.85;
+  box-shadow:
+    0 0 35px rgba(0, 255, 136, 0.45),
+    0 0 15px rgba(240, 216, 120, 0.2);
+  animation: platformRingSpin 17s linear infinite;
 }
 
 @keyframes platformRingSpin {
-  from { transform: translateX(-50%) rotateX(72deg) rotateZ(0deg); }
-  to   { transform: translateX(-50%) rotateX(72deg) rotateZ(360deg); }
+  from { transform: translateX(-50%) rotateX(68deg) rotateZ(0deg); }
+  to   { transform: translateX(-50%) rotateX(68deg) rotateZ(360deg); }
 }
 
+/* Side energy auras on the coin */
 .hype-logo::before,
 .hype-logo::after {
   content: '';
   position: absolute;
-  top: 12%;
-  width: 36px;
-  height: 100px;
+  top: 8%;
+  width: 40px;
+  height: 110px;
   pointer-events: none;
-  z-index: 5;
-  opacity: 0.45;
+  z-index: 6;
+  opacity: 0.55;
   filter: blur(2px);
   background: linear-gradient(180deg,
     transparent 0%,
-    rgba(0, 255, 160, 0.45) 25%,
-    rgba(160, 255, 210, 0.2) 50%,
-    rgba(0, 255, 136, 0.4) 75%,
+    rgba(0, 255, 170, 0.55) 20%,
+    rgba(160, 255, 210, 0.25) 45%,
+    rgba(0, 255, 136, 0.5) 70%,
     transparent 100%);
   clip-path: polygon(
     40% 0%, 60% 8%, 48% 22%, 68% 35%, 45% 48%,
@@ -558,24 +603,24 @@ body {
     35% 88%, 48% 75%, 30% 62%, 50% 48%,
     28% 36%, 45% 22%, 32% 10%
   );
-  animation: sideAuraFlicker 3.2s ease-in-out infinite;
+  animation: sideAuraFlicker 3s ease-in-out infinite;
 }
 
 .hype-logo::before {
-  left: -2px;
-  transform: scaleX(-1) rotate(-6deg);
-  animation-delay: -1s;
+  left: -6px;
+  transform: scaleX(-1) rotate(-7deg);
+  animation-delay: -1.1s;
 }
 
 .hype-logo::after {
-  right: -2px;
-  transform: rotate(6deg);
+  right: -6px;
+  transform: rotate(7deg);
 }
 
 @keyframes sideAuraFlicker {
-  0%, 100% { opacity: 0.3; }
-  40%      { opacity: 0.6; }
-  70%      { opacity: 0.4; }
+  0%, 100% { opacity: 0.35; }
+  40%      { opacity: 0.7; }
+  70%      { opacity: 0.45; }
 }
 
 .tap-hint {
@@ -1613,8 +1658,9 @@ button.secondary {
 }
 .hype-logo {
   box-shadow:
-    0 0 30px rgba(0, 255, 136, 0.35),
-    0 0 60px rgba(240, 216, 120, 0.15);
+    0 0 40px rgba(0, 255, 136, 0.4),
+    0 0 80px rgba(0, 255, 136, 0.18),
+    0 0 50px rgba(240, 216, 120, 0.12);
 }
 
 /* Connected wallet button */
@@ -1875,13 +1921,67 @@ button.secondary {
 
 
 /* ========== Global bold typography (JVault style) ========== */
-.app, .page, .card, .nav-label, .tap-hint, .badge, .uid-badge,
-.hl-stat-label, .hl-stat-val, .hl-chart-title, .checkin-sub,
-.cs-label, .cd-label, .cd-reward, .sb-desc, .checkin-note,
-.input, label, .btn, .claim-btn, .connect-wallet-btn, .energy-text {
+body,
+.app,
+.page,
+.card,
+.nav-label,
+.nav-item,
+.tap-hint,
+.badge,
+.uid-badge,
+.hl-stat-label,
+.hl-stat-val,
+.hl-chart-title,
+.hl-live-badge,
+.hl-iv,
+.hl-chg,
+.hl-live-footer,
+.checkin-sub,
+.cs-label,
+.cd-label,
+.cd-reward,
+.sb-desc,
+.checkin-note,
+.input,
+label,
+.btn,
+.claim-btn,
+.connect-wallet-btn,
+.energy-text,
+.energy-pct-badge,
+.toast,
+.timer,
+.lb-name,
+.lb-amount,
+.lb-rank,
+.rank-num,
+.admin-tab,
+.wc-status,
+.wc-addr {
   font-weight: 700 !important;
 }
-.logo-title, .card-title, .balance-amount, .page h3,
-.claim-btn, .cs-val, .checkin-title, .sb-title, .balance-symbol {
+
+.logo-title,
+.card-title,
+.balance-amount,
+.balance-symbol,
+.page h3,
+.claim-btn,
+.cs-val,
+.checkin-title,
+.sb-title,
+.cdh-title,
+.next-reward-pill,
+.loading-title,
+.loading-tagline {
   font-weight: 800 !important;
+}
+
+/* Extra bold for key numbers & buttons */
+.balance-amount,
+.claim-btn,
+.checkin-title,
+.logo-title {
+  font-weight: 900 !important;
 }
