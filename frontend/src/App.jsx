@@ -227,6 +227,7 @@ export default function App() {
   const [dayHigh, setDayHigh] = useState(0);
   const [dayLow, setDayLow] = useState(0);
   const [chartLoading, setChartLoading] = useState(true);
+  const [selectedMinerLevel, setSelectedMinerLevel] = useState(1);
 
   // Admin
   const [adminTab, setAdminTab] = useState('stats');
@@ -1289,13 +1290,13 @@ user: tg?.initDataUnsafe?.user,
             <Icon name="crown" className="crown" size={20} /> Hype Token
           </div>
           <div className="header-badges">
-            <span className="badge gold-lvl"><Icon name="crown" size={12} /> Lvl 1</span>
+            <button type="button" className="badge gold-lvl level-open-btn" onClick={() => setTab('miner')}><Icon name="crown" size={12} /> Lvl {Number(user?.level || 1)} <span className="level-open-cue">›</span></button>
             <span className="badge online"><Icon name="zap" size={12} /> ONLINE</span>
           </div>
           {price > 0 && (
-            <div className="lvl-progress">
+            <button type="button" className="lvl-progress level-progress-open" onClick={() => setTab('miner')}>
               ≈ ${(Number(user?.balance || 0) * price).toFixed(4)}$ left to Lvl UP →
-            </div>
+            </button>
           )}
         </div>
         <div className="header-right">
@@ -1556,6 +1557,83 @@ user: tg?.initDataUnsafe?.user,
             </div>
           </div>
         </>
+      )}
+
+      {/* MINER LEVELS — presentation layer only; existing mining/reward APIs are untouched */}
+      {tab === 'miner' && (
+        <section className="miner-page">
+          <div className="miner-heading-row">
+            <div>
+              <div className="miner-eyebrow">HYPE EVM · MINING STATION</div>
+              <h1>Miner <span>Levels</span></h1>
+              <p>Track HYPE market movement and explore the 1–1000 level journey.</p>
+            </div>
+            <button className="miner-back-btn" onClick={() => setTab('tap')}>← Mine</button>
+          </div>
+
+          <div className="miner-market-card">
+            <div className="miner-market-head">
+              <div><span className="hl-live-dot" /> HYPE / USDT <span className="hl-live-badge">LIVE</span></div>
+              <span className="miner-market-source">HYPERLIQUID</span>
+            </div>
+            <div className="miner-price-line">
+              <strong>{price > 0 ? `$${Number(price).toFixed(4)}` : 'Loading price…'}</strong>
+              <span className={`hl-chg ${dayChange >= 0 ? 'up' : 'down'}`}>{dayChange >= 0 ? '+' : ''}{Number(dayChange || 0).toFixed(2)}%</span>
+            </div>
+            <div className="hl-intervals miner-intervals">
+              {['15m', '30m', '1h', '4h', '1d'].map((iv) => (
+                <button key={iv} className={`hl-iv ${chartInterval === iv ? 'active' : ''}`} onClick={() => setChartInterval(iv)}>{iv}</button>
+              ))}
+            </div>
+            <div className="miner-chart-area">
+              {chartLoading && candles.length === 0 ? <div className="hl-spark-loading">Loading live market chart…</div> : candles.length > 1 ? (
+                <svg viewBox="0 0 320 120" preserveAspectRatio="none" className="hl-full-svg" role="img" aria-label="HYPE live price chart">
+                  <defs><linearGradient id="minerChartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="rgba(38,220,135,.28)"/><stop offset="100%" stopColor="rgba(38,220,135,0)"/></linearGradient></defs>
+                  {(() => {
+                    const values = candles.map((c) => Number(c.c));
+                    const min = Math.min(...values); const max = Math.max(...values); const range = max - min || 1;
+                    const pts = values.map((v, i) => [i / (values.length - 1) * 320, 8 + 88 - ((v - min) / range) * 88]);
+                    const line = pts.map((pt) => pt.join(',')).join(' ');
+                    const area = `0,108 ${line} 320,108`;
+                    return <><polygon points={area} fill="url(#minerChartFill)"/><polyline points={line} fill="none" stroke="#39d98a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></>;
+                  })()}
+                </svg>
+              ) : <div className="hl-spark-loading">Live chart data is temporarily unavailable</div>}
+            </div>
+            <div className="miner-market-foot"><span>24H VOL <b>{dayVol >= 1e9 ? `$${(dayVol / 1e9).toFixed(2)}B` : dayVol > 0 ? `$${(dayVol / 1e6).toFixed(1)}M` : '—'}</b></span><span>HIGH <b>{dayHigh > 0 ? `$${dayHigh.toFixed(3)}` : '—'}</b></span><span>LOW <b>{dayLow > 0 ? `$${dayLow.toFixed(3)}` : '—'}</b></span></div>
+          </div>
+
+          <div className="miner-overview-grid">
+            <div className="miner-stat-card"><span>CURRENT LEVEL</span><strong>LVL {Number(user?.level || 1)}</strong><small>Mining profile</small></div>
+            <div className="miner-stat-card"><span>MINING POINTS</span><strong>{formatNum(user?.total_taps || 0, 0)}</strong><small>Recorded taps</small></div>
+          </div>
+
+          <div className="miner-energy-card">
+            <div className="miner-energy-copy"><span className="miner-eyebrow">ENERGY CORE</span><strong>Energy Reserve</strong><small>{Math.max(0, energyLeft).toLocaleString()} / {(config?.energy_max || 1000).toLocaleString()} available</small></div>
+            <div className="energy-cylinder" role="img" aria-label={`${Math.round(Math.max(0, energyLeft) / (config?.energy_max || 1000) * 100)} percent energy available`}>
+              <div className="energy-cylinder-liquid" style={{height:`${Math.min(100, Math.max(0, energyLeft / (config?.energy_max || 1000) * 100))}%`}} />
+              <div className="energy-cylinder-glass" /><span>{Math.round(Math.min(100, Math.max(0, energyLeft / (config?.energy_max || 1000) * 100)))}%</span>
+            </div>
+            <div className="miner-energy-foot"><span><i /> Live energy</span><span>{energyLeft <= 0 ? `Recharge ${formatTime(waitSec)}` : 'Regenerates on cooldown'}</span></div>
+          </div>
+
+          <div className="miner-levels-head"><div><span className="miner-eyebrow">PROGRESSION ROADMAP</span><h2>Explore <span>1–1000</span></h2></div><span className="miner-level-count">1000 LEVELS</span></div>
+          <div className="miner-level-note">Level requirements shown here are visual roadmap estimates. Your existing server-side mining and reward rules remain unchanged.</div>
+          <div className="miner-level-grid">
+            {Array.from({length:1000}, (_, i) => i + 1).map((level) => {
+              const current = Number(user?.level || 1);
+              const state = level < current ? 'complete' : level === current ? 'current' : 'locked';
+              return <button key={level} type="button" className={`miner-level-tile ${state} ${selectedMinerLevel === level ? 'selected' : ''}`} onClick={() => setSelectedMinerLevel(level)} aria-pressed={selectedMinerLevel === level}>
+                <span>{level < current ? '✓' : level === current ? '◆' : '◇'}</span><b>{level}</b>
+              </button>;
+            })}
+          </div>
+          <div className="miner-selected-level">
+            <div><span className="miner-eyebrow">SELECTED LEVEL</span><strong>LEVEL {selectedMinerLevel}</strong></div>
+            <div className="miner-requirements"><span>⚡ {selectedMinerLevel * 10} Energy <small>Preview</small></span><span>✦ {(selectedMinerLevel * 100).toLocaleString()} Points <small>Preview</small></span></div>
+            <div className="miner-level-status">{selectedMinerLevel <= Number(user?.level || 1) ? 'Current progression reached' : 'Future level · requirements are illustrative'}</div>
+          </div>
+        </section>
       )}
 
       {/* TASKS */}
