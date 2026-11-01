@@ -269,6 +269,61 @@ const [broadcastSending, setBroadcastSending] = useState(false);
     setTimeout(() => setToast(''), 2500);
   };
 
+  // Force Manrope font + solid cinematic platform background (Telegram-safe)
+  useEffect(() => {
+    // Manrope font
+    if (!document.getElementById('manrope-font')) {
+      const link = document.createElement('link');
+      link.id = 'manrope-font';
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap';
+      document.head.appendChild(link);
+    }
+    const fontStack = "'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    document.body.style.fontFamily = fontStack;
+
+    // Platform background force
+    if (!document.getElementById('hype-platform-force')) {
+      const style = document.createElement('style');
+      style.id = 'hype-platform-force';
+      style.textContent = `
+        .tap-area {
+          background: url('/hype-bg-platform.png') center 38% / cover no-repeat !important;
+          min-height: 360px !important;
+          border-radius: 16px !important;
+          overflow: hidden !important;
+          position: relative !important;
+        }
+        .tap-bg,
+        .logo-platform,
+        .logo-platform-beam,
+        .logo-platform-base,
+        .logo-platform-glow,
+        .logo-ring,
+        .tap-rock,
+        .tap-glow-core {
+          display: none !important;
+          opacity: 0 !important;
+          visibility: hidden !important;
+          pointer-events: none !important;
+        }
+        .hype-logo {
+          background: transparent !important;
+          box-shadow: none !important;
+        }
+        .logo-img {
+          filter: drop-shadow(0 14px 28px rgba(0,255,136,0.55)) !important;
+          z-index: 20 !important;
+          position: relative !important;
+        }
+        body, .app, .page, .card, .nav-label, .btn, .claim-btn, .badge {
+          font-family: ${fontStack} !important;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
+
   const headers = () => {
     const h = { 'Content-Type': 'application/json' };
     // Always read live initData from WebApp (not a stale const)
@@ -1279,7 +1334,7 @@ user: tg?.initDataUnsafe?.user,
   }
 
   return (
-    <div className="app">
+    <div className="app" style={{ fontFamily: "'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
       {toast && <div className="toast">{toast}</div>}
 
       {/* Header - matching Hype Token UI */}
