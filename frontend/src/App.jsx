@@ -1185,7 +1185,7 @@ showToast(data.error || 'Already checked in today');
       setTaskVerification((s) => ({ ...s, [taskId]: data.claimed ? 'claimed' : 'verified' }));
       setPendingTasks((p) => (p.includes(taskId) ? p : [...p, taskId]));
       if (data.claimed) showToast('Task already claimed earlier. No repeat reward.');
-      else showToast('Membership verified! Claim your reward.');
+      else showToast(data.manual ? 'YouTube task opened. Confirm your subscription, then claim once.' : 'Membership verified! Claim your reward.');
     } else {
       setTaskVerification((s) => ({ ...s, [taskId]: 'not_member' }));
       setPendingTasks((p) => p.filter((id) => id !== taskId));
@@ -2381,10 +2381,10 @@ const locked = !claimed && !current;
                 <input className="input" placeholder="Title" value={newTask.title} onChange={(e) => setNewTask({ ...newTask, title: e.target.value })} />
                 <select className="input" value={newTask.type} onChange={(e) => setNewTask({ ...newTask, type: e.target.value })}>
                   <option value="telegram">Telegram Channel</option>
-                  <option value="youtube" disabled>YouTube (verification not available yet)</option>
+                  <option value="youtube">YouTube (self-confirm)</option>
                 </select>
                 <input className="input" placeholder="Link" value={newTask.link} onChange={(e) => setNewTask({ ...newTask, link: e.target.value })} />
-                <div className="muted" style={{ fontSize: 12 }}>Telegram tasks must use a public t.me channel link. Add the bot as a channel admin so membership can be verified.</div>
+                <div className="muted" style={{ fontSize: 12 }}>{newTask.type === 'telegram' ? 'Public t.me channel link required. Add the bot as a channel admin for automatic membership verification.' : 'Public YouTube channel/video link required. Users self-confirm after opening; YouTube subscription is not independently verified.'}</div>
 
 <input className="input" placeholder="Reward HYPE" value={newTask.reward} onChange={(e) => setNewTask({ ...newTask, reward: e.target.value })} />
                 <button className="btn btn-primary" style={{ width: '100%' }} onClick={addTask}>
