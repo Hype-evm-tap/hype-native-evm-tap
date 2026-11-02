@@ -212,7 +212,9 @@ export default function App() {
   const [leaderboard, setLeaderboard] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [completedTasks, setCompletedTasks] = useState([]);
-  const [pendingTasks, setPendingTasks] = useState([]); // opened Join, waiting claim
+  const [pendingTasks, setPendingTasks] = useState([]);
+  const [taskVerification, setTaskVerification] = useState({});
+  const [taskCountdown, setTaskCountdown] = useState({});
   const [referrals, setReferrals] = useState([]);
   const [withdrawals, setWithdrawals] = useState([]);
   const [energyLeft, setEnergyLeft] = useState(1000);
@@ -981,6 +983,7 @@ showToast(data.error || 'Already checked in today');
       api('/api/tasks').then((d) => {
         setTasks(d.tasks || []);
         setCompletedTasks(d.completed || []);
+        setTaskVerification(Object.fromEntries((d.completed || []).map((id) => [id, 'claimed'])));
       });
     }
     if (tab === 'friends') {
@@ -1154,47 +1157,77 @@ showToast(data.error || 'Already checked in today');
     if (adminTab === 'referrals') loadAdminReferrals();
   }, [adminTab, tab, user]);
 
-  const completeTask = async (taskId) => {
-    if (completedTasks.includes(taskId)) return;
-    const data = await api('/api/tasks/complete', {
+  const verifyTask = async (taskId) => {
+    setTaskVerification((s) => ({ ...s, [taskId]: 'checking' }));
+    const data = await api('/api/tasks/verify', {
       method: 'POST',
-      body: JSON.stringify({
-        user: window.Telegram?.WebApp?.initDataUnsafe?.user || tg?.initDataUnsafe?.user,
-        task_id: taskId,
-      }),
+      body: JSON.stringify({ task_id: taskId }),
     });
-    if (data.success) {
-      showToast(`+${formatNum(data.reward, 12)} HYPE`);
-      setCompletedTasks((c) => (c.includes(taskId) ? c : [...c, taskId]));
-      setPendingTasks((p) => p.filter((id) => id !== taskId));
-      loadUser();
+    if (data.verified) {
+      setTaskVerification((s) => ({ ...s, [taskId]: data.claimed ? 'claimed' : 'verified' }));
+      setPendingTasks((p) => (p.includes(taskId) ? p : [...p, taskId]));
+      if (data.claimed) showToast('Task already claimed earlier. No repeat reward.');
+      else showToast('Membership verified! Claim your reward.');
     } else {
-      // Already done on server
-      if (String(data.error || '').toLowerCase().includes('already') || data.already) {
-        setCompletedTasks((c) => (c.includes(taskId) ? c : [...c, taskId]));
-        setPendingTasks((p) => p.filter((id) => id !== taskId));
-        showToast('Already claimed');
-      } else {
-        showToast(data.error || 'Failed — try Claim again');
-      }
+      setTaskVerification((s) => ({ ...s, [taskId]: 'not_member' }));
+      setPendingTasks((p) => p.filter((id) => id !== taskId));
+      showToast(data.error || 'Channel join nahi mila. Join karke dobara try karein.');
     }
   };
 
-  // When user returns to app after Join, auto-try complete pending tasks
+  const joinTask = async (task) => {
+    const taskId = task.id;
+    if (!task.link) return showToast('Task link missing');
+    try {
+      if (window.Telegram?.WebApp?.openTelegramLink && /t\.me\//i.test(task.link)) {
+        window.Telegram.WebApp.openTelegramLink(task.link);
+      } else if (window.Telegram?.WebApp?.openLink) {
+        window.Telegram.WebApp.openLink(task.link);
+      } else {
+        window.open(task.link, '_blank', 'noopener,noreferrer');
+      }
+    } catch (_) {}
+    setTaskVerification((s) => ({ ...s, [taskId]: 'waiting' }));
+    for (let seconds = 5; seconds > 0; seconds -= 1) {
+      setTaskCountdown((s) => ({ ...s, [taskId]: seconds }));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    setTaskCountdown((s) => ({ ...s, [taskId]: 0 }));
+    await verifyTask(taskId);
+  };
+
+  const completeTask = async (taskId) => {
+    if (completedTasks.includes(taskId) || taskVerification[taskId] !== 'verified') return;
+    setTaskVerification((s) => ({ ...s, [taskId]: 'claiming' }));
+    const data = await api('/api/tasks/complete', {
+      method: 'POST',
+      body: JSON.stringify({ task_id: taskId }),
+    });
+    if (data.success) {
+      setCompletedTasks((c) => (c.includes(taskId) ? c : [...c, taskId]));
+      setTaskVerification((s) => ({ ...s, [taskId]: 'claimed' }));
+      showToast(data.already_claimed ? 'Reward pehle hi mil chuka hai.' : `+${formatNum(data.reward, 12)} HYPE`);
+      loadUser();
+    } else {
+      setTaskVerification((s) => ({ ...s, [taskId]: 'not_member' }));
+      setPendingTasks((p) => p.filter((id) => id !== taskId));
+      showToast(data.error || 'Verification failed. Join karke dobara try karein.');
+    }
+  };
+
+  const refreshTaskMembership = async () => {
+    const results = await Promise.all(tasks.map(async (task) => {
+      const data = await api('/api/tasks/verify', { method: 'POST', body: JSON.stringify({ task_id: task.id }) });
+      return [task.id, data.verified ? (data.claimed ? 'claimed' : 'verified') : 'not_member'];
+    }));
+    setTaskVerification((s) => ({ ...s, ...Object.fromEntries(results) }));
+    setPendingTasks(results.filter(([, status]) => status === 'verified').map(([id]) => id));
+  };
+
   useEffect(() => {
-    const onReturn = () => {
-      if (document.visibilityState !== 'visible') return;
-      pendingTasks.forEach((id) => {
-        if (!completedTasks.includes(id)) completeTask(id);
-      });
-    };
-    document.addEventListener('visibilitychange', onReturn);
-    window.addEventListener('focus', onReturn);
-    return () => {
-      document.removeEventListener('visibilitychange', onReturn);
-      window.removeEventListener('focus', onReturn);
-    };
-  }, [pendingTasks, completedTasks]);
+    if (tab !== 'tasks' || !tasks.length) return;
+    refreshTaskMembership();
+  }, [tab, tasks]);
 
   const requestWithdraw = async () => {
     const amount = parseFloat(wdAmount);
@@ -1830,45 +1863,32 @@ const locked = !claimed && !current;
           <h3 style={{ margin: '16px 0 12px', color: '#00ff88' }}>Tasks & Rewards</h3>
           {tasks.length === 0 && <div className="card">No tasks yet. Check back later.</div>}
           {tasks.map((t) => {
-            const done = completedTasks.includes(t.id);
-            const pending = pendingTasks.includes(t.id);
+            const claimed = completedTasks.includes(t.id);
+            const status = taskVerification[t.id] || (claimed ? 'claimed' : 'not_member');
+            const verified = status === 'verified' || pendingTasks.includes(t.id);
+            const waiting = status === 'waiting' || status === 'checking';
             return (
               <div className="card task-card" key={t.id}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700 }}>{t.title}</div>
-                    <div style={{ fontSize: '0.8rem', color: '#f0d878', marginTop: 4 }}>
-                      +{formatNum(t.reward, 12)} HYPE
-                    </div>
+                <div className="task-card-content">
+                  <div className="task-info">
+                    <div className="task-title">{t.title}</div>
+                    <div className="task-reward">+{formatNum(t.reward, 12)} HYPE</div>
                   </div>
-                  {done ? (
-                    <span className="task-done-badge"><Icon name="check" size={14} /> Done</span>
-                  ) : pending ? (
-                    <button
-                      className="btn btn-primary claim-btn"
-                      style={{ padding: '8px 14px', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
-                      onClick={() => completeTask(t.id)}
-                    >
-                      Claim
-                    </button>
-                  ) : (
-                    <button
-                      className="btn btn-primary"
-                      style={{ padding: '8px 14px', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
-                      onClick={() => {
-                        if (t.link) {
-                          try { window.Telegram?.WebApp?.openLink?.(t.link); } catch (_) {}
-                          window.open(t.link, '_blank');
-                        }
-                        setPendingTasks((p) => (p.includes(t.id) ? p : [...p, t.id]));
-                        // also try complete after short delay (Telegram often returns quickly)
-                        setTimeout(() => completeTask(t.id), 2500);
-                      }}
-                    >
-                      Join
-                    </button>
-                  )}
+                  <div className="task-action">
+                    {claimed || status === 'claimed' ? (
+                      <span className="task-done-badge"><Icon name="check" size={14} /> Claimed</span>
+                    ) : verified ? (
+                      <button className="btn btn-primary task-action-btn" disabled={status === 'claiming'} onClick={() => completeTask(t.id)}>
+                        {status === 'claiming' ? 'Claiming…' : 'Claim'}
+                      </button>
+                    ) : (
+                      <button className="btn btn-primary task-action-btn" disabled={waiting} onClick={() => joinTask(t)}>
+                        {waiting ? `Verify ${taskCountdown[t.id] || ''}s` : 'Join'}
+                      </button>
+                    )}
+                  </div>
                 </div>
+                {waiting && <div className="task-verify-note">Joining check: {taskCountdown[t.id] || 0}s remaining</div>}
               </div>
             );
           })}
