@@ -1399,11 +1399,8 @@ user: tg?.initDataUnsafe?.user,
           </div>
 
           <div className="tap-area atf-stage">
-            {/* ATF hall ambient + gold sparkles */}
-            <div className="tap-bg" aria-hidden="true">
-              <span className="atf-spark s1" /><span className="atf-spark s2" /><span className="atf-spark s3" />
-              <span className="atf-spark s4" /><span className="atf-spark s5" /><span className="atf-spark s6" />
-            </div>
+            {/* Ambient (green theme) */}
+            <div className="tap-bg" aria-hidden="true" />
 
             <div
               className={`hype-logo ${tapAnim ? 'tapped' : ''}`}
@@ -1414,20 +1411,20 @@ user: tg?.initDataUnsafe?.user,
               role="button"
               aria-label="Tap to mine"
             >
-              {/* Coin only — no side rings, no crown on coin */}
+              {/* Coin only — no side rings, no yellow crown */}
               <div className="atf-coin-wrap">
                 <div className="atf-coin-glow" />
                 <img src="/hype-logo.png" alt="HYPE Logo" className="logo-img" draggable={false} />
               </div>
 
-              {/* ATF-style gold platform under coin */}
-              <div className="atf-platform" aria-hidden="true">
-                <div className="atf-platform-glow" />
-                <div className="atf-platform-top" />
-                <div className="atf-platform-mid" />
-                <div className="atf-platform-bottom" />
-                <div className="atf-platform-shine" />
-              </div>
+              {/* New cyan high-tech platform (user provided) */}
+              <img
+                src="/hype-platform.png"
+                alt=""
+                className="hype-platform-img"
+                aria-hidden="true"
+                draggable={false}
+              />
 
               {coins.map((c) => (
                 <span
