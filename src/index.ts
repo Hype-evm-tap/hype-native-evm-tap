@@ -445,10 +445,9 @@ async function checkTelegramTaskMembership(db: D1Database, env: Bindings, userId
   if (!task) return { error: 'Task not found', status: 404 };
   const taskType = String(task.type || '').toLowerCase();
   if (taskType === 'youtube') {
-    const youtubeLink = /^(https?:\/\/)?(www\.)?(youtube\.com\/(channel\/|@|c\/|user\/|watch\?v=)|youtu\.be\/)[A-Za-z0-9_?&=.-]+/i.test(String(task.link || '').trim());
-    if (!youtubeLink) return { error: 'YouTube task link is invalid', status: 422 };
-    const claimed = await db.prepare('SELECT 1 FROM user_tasks WHERE user_id = ? AND task_id = ?').bind(userId, taskId).first();
-    return { task, isMember: true, manual: true, claimed: !!claimed };
+    // Fail closed until server-side Google OAuth subscription verification is configured.
+    // Client-side self-confirmation must never grant rewards.
+    return { error: 'YouTube verification is being configured. Please try again later.', status: 503 };
   }
   if (taskType !== 'telegram') return { error: 'Unsupported task type', status: 422 };
   if (!env.BOT_TOKEN) return { error: 'Telegram bot token is not configured', status: 503 };
@@ -472,7 +471,7 @@ app.post('/api/tasks/verify', async (c) => {
     const check: any = await checkTelegramTaskMembership(c.env.DB, c.env, userId, taskId);
     if (check.error) return c.json({ error: check.error }, check.status);
     const claimed = await c.env.DB.prepare('SELECT 1 FROM user_tasks WHERE user_id = ? AND task_id = ?').bind(userId, taskId).first();
-    return c.json({ verified: check.isMember, claimed: !!claimed || !!check.claimed, manual: !!check.manual, message: check.manual ? 'YouTube task ready for self-confirmation' : check.isMember ? 'Membership verified' : 'Join the channel first' });
+    return c.json({ verified: check.isMember, claimed: !!claimed || !!check.claimed, manual: !!check.manual, message: check.isMember ? 'Membership verified' : 'Join the channel first' });
   } catch (e: any) { return c.json({ error: e?.message || 'Task verification failed' }, 400); }
 });
 
