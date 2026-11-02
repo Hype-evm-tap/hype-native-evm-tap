@@ -1203,7 +1203,7 @@ showToast(data.error || 'Already checked in today');
   const requestWithdraw = async () => {
     const amount = parseFloat(wdAmount);
     if (!amount || amount < (config?.min_withdraw || 2)) {
-      showToast(`Min ${config?.min_withdraw || 1} HYPE`);
+      showToast(`Min ${config?.min_withdraw || 2} HYPE`);
       return;
     }
     if (!connectedWallet || connectedWallet.length < 10) {
