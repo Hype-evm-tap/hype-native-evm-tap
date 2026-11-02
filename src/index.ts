@@ -564,7 +564,8 @@ app.post('/api/admin/tasks', async (c) => {
   const type = String(b.type || 'telegram').trim().toLowerCase();
   const link = String(b.link || '').trim().slice(0, 500);
   const reward = Number(b.reward);
-  if (!title || !link || type !== 'telegram' || !Number.isFinite(reward) || reward < 0 || reward > 1000000) return c.json({ error: 'Only public Telegram channel tasks with a valid title, link and reward are supported' }, 400);
+  const telegramChannel = link.match(/^(?:https?:\/\/)?(?:www\.)?t\.me\/([A-Za-z0-9_]{5,})\/?$|^@([A-Za-z0-9_]{5,})$/i);
+  if (!title || !telegramChannel || type !== 'telegram' || !Number.isFinite(reward) || reward < 0 || reward > 1000000) return c.json({ error: 'Only public Telegram channel links (t.me/name or @name), with a valid title and reward, are supported' }, 400);
   const info = await c.env.DB.prepare('INSERT INTO tasks (title, type, link, reward, is_active) VALUES (?, ?, ?, ?, 1)').bind(title, type, link, reward).run();
   return c.json({ success: true, id: info.meta.last_row_id });
 });
@@ -630,11 +631,13 @@ app.post('/api/admin/users/:id', async (c) => {
     `UPDATE users SET balance = COALESCE(?, balance), total_earned = COALESCE(?, total_earned), total_taps = COALESCE(?, total_taps), is_admin = COALESCE(?, is_admin), invite_count = COALESCE(?, invite_count) WHERE id = ?`
   ).bind(fields.balance ?? null, fields.total_earned ?? null, fields.total_taps ?? null, b.is_admin == null ? null : (b.is_admin ? 1 : 0), id).run();
   const updated = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<any>();
+  if (!updated) return c.json({ error: 'User not found' }, 404);
   return c.json({ success: true, user: publicUser(updated, c.env) });
 });
 app.delete('/api/admin/users/:id', async (c) => {
   const id = Number(c.req.param('id'));
   if (!Number.isSafeInteger(id) || id <= 0) return c.json({ error: 'Invalid user id' }, 400);
+  if (id === c.get('tgUser').id || adminSet(c.env).has(id)) return c.json({ error: 'Cannot delete your own account or a configured administrator' }, 403);
   await c.env.DB.batch([
     c.env.DB.prepare('DELETE FROM user_tasks WHERE user_id = ?').bind(id),
     c.env.DB.prepare('DELETE FROM referrals WHERE referrer_id = ? OR referred_id = ?').bind(id, id),
