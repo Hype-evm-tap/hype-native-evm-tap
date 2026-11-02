@@ -71,6 +71,15 @@ async function getSetting(db: D1Database, key: string): Promise<string> {
   return DEFAULTS[key] ?? '';
 }
 
+async function getConfiguredSetting(db: D1Database, key: string, envValue?: string): Promise<string> {
+  try {
+    const row = await db.prepare('SELECT value FROM settings WHERE key = ?').bind(key).first<{ value: string }>();
+    if (row?.value != null && row.value !== '') return String(row.value);
+  } catch {}
+  if (envValue != null && envValue !== '') return String(envValue);
+  return DEFAULTS[key] ?? '';
+}
+
 async function setSetting(db: D1Database, key: string, value: string) {
   await db.prepare(
     `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, strftime('%s','now'))
@@ -87,21 +96,16 @@ async function getConfig(db: D1Database, env?: Bindings) {
     dayRewards = [0.0000089, 0.000002, 0.000006, 0.000007, 0.0000079, 0.0000089, 0.0004];
   }
   const cfg: any = {
-    tap_reward: parseFloat(await getSetting(db, 'tap_reward')),
-    referral_reward: parseFloat(await getSetting(db, 'referral_reward')),
-    min_withdraw: parseFloat(await getSetting(db, 'min_withdraw')),
-    energy_max: parseFloat(await getSetting(db, 'energy_max')),
-    energy_cooldown: parseFloat(await getSetting(db, 'energy_cooldown')),
+    tap_reward: parseFloat(await getConfiguredSetting(db, 'tap_reward', env?.TAP_REWARD)),
+    referral_reward: parseFloat(await getConfiguredSetting(db, 'referral_reward', env?.REFERRAL_REWARD)),
+    min_withdraw: parseFloat(await getConfiguredSetting(db, 'min_withdraw', env?.MIN_WITHDRAW)),
+    energy_max: parseFloat(await getConfiguredSetting(db, 'energy_max', env?.ENERGY_MAX)),
+    energy_cooldown: parseFloat(await getConfiguredSetting(db, 'energy_cooldown', env?.ENERGY_COOLDOWN_SEC)),
     daily_checkin_reward: parseFloat(await getSetting(db, 'daily_checkin_reward')),
     streak_bonus: parseFloat(await getSetting(db, 'streak_bonus')) || 0,
     checkin_day_rewards: dayRewards,
     bot_username: env?.BOT_USERNAME || '',
   };
-  if (env?.TAP_REWARD) cfg.tap_reward = parseFloat(env.TAP_REWARD);
-  if (env?.REFERRAL_REWARD) cfg.referral_reward = parseFloat(env.REFERRAL_REWARD);
-  if (env?.MIN_WITHDRAW) cfg.min_withdraw = parseFloat(env.MIN_WITHDRAW);
-  if (env?.ENERGY_MAX) cfg.energy_max = parseFloat(env.ENERGY_MAX);
-  if (env?.ENERGY_COOLDOWN_SEC) cfg.energy_cooldown = parseFloat(env.ENERGY_COOLDOWN_SEC);
   return cfg;
 }
 
@@ -154,7 +158,7 @@ function adminSet(env: Bindings) {
 async function ensureUser(db: D1Database, env: Bindings, tgUser: TgUser, startParam?: string | null) {
   if (!tgUser?.id) throw new Error('No user');
   let u = await db.prepare('SELECT * FROM users WHERE id = ?').bind(tgUser.id).first<any>();
-  const energyMax = parseFloat(await getSetting(db, 'energy_max')) || 1000;
+  const energyMax = parseFloat(await getConfiguredSetting(db, 'energy_max', env.ENERGY_MAX)) || 1000;
   const shouldAdmin = adminSet(env).has(Number(tgUser.id)) ? 1 : 0;
 
   if (!u) {
@@ -168,7 +172,7 @@ async function ensureUser(db: D1Database, env: Bindings, tgUser: TgUser, startPa
       if (refId && refId !== tgUser.id) {
         const ref = await db.prepare('SELECT id FROM users WHERE id = ?').bind(refId).first();
         if (ref) {
-          const reward = parseFloat(await getSetting(db, 'referral_reward')) || parseFloat(env.REFERRAL_REWARD || '') || 0;
+          const reward = parseFloat(await getConfiguredSetting(db, 'referral_reward', env.REFERRAL_REWARD)) || 0;
           const ins = await db.prepare('INSERT OR IGNORE INTO referrals (referrer_id, referred_id, reward) VALUES (?, ?, ?)').bind(refId, tgUser.id, reward).run();
           if ((ins?.meta?.changes ?? 0) > 0) {
             await db.prepare('UPDATE users SET referred_by = ? WHERE id = ? AND (referred_by IS NULL OR referred_by = 0)').bind(refId, tgUser.id).run();
@@ -490,7 +494,7 @@ app.post('/api/withdraw', async (c) => {
     const u = await ensureUser(c.env.DB, c.env, c.get('tgUser'), null);
     const amount = Number(body.amount);
     const wallet = String(body.wallet_address || u.wallet_address || '').trim();
-    const min = parseFloat(await getSetting(c.env.DB, 'min_withdraw')) || 2;
+    const min = parseFloat(await getConfiguredSetting(c.env.DB, 'min_withdraw', c.env.MIN_WITHDRAW)) || 2;
     if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) return c.json({ error: 'Enter a valid HyperEVM wallet address' }, 400);
     if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(min) || amount < min) return c.json({ error: `Min ${min} HYPE` }, 400);
     const result = await c.env.DB.batch([
