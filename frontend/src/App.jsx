@@ -1378,13 +1378,11 @@ user: tg?.initDataUnsafe?.user,
       {tab === 'tap' && (
         <>
           <div className="assets-card atf-assets">
-            {/* Single ATF-style golden crown above ASSETS */}
-            <div className="assets-crowns" aria-hidden="true">
-              <img className="assets-crown-main" src="/crown.png" alt="" draggable={false} />
+            {/* Full ornate ASSETS banner image (already has ASSETS text + decoration) */}
+            <div className="assets-ornate-header">
+              <img className="assets-banner-img" src="/assets-banner.png" alt="ASSETS" draggable={false} />
             </div>
-            <div className="assets-label">ASSETS</div>
             <div className="atf-balance-banner">
-              <img src="/hype-logo.png" alt="HYPE" className="balance-icon" />
               <div className="balance-amount">{formatNum(user?.balance, 10)}</div>
               <div className="balance-symbol">HYPE</div>
             </div>
@@ -1415,8 +1413,14 @@ user: tg?.initDataUnsafe?.user,
                 <img src="/hype-logo.png" alt="HYPE Logo" className="logo-img" draggable={false} />
               </div>
 
-              {/* Vertical lighting beam from platform up to coin */}
-              <div className="platform-beam" aria-hidden="true" />
+              {/* Energy beam — platform se nikal ke sirf coin tak */}
+              <img
+                src="/beam.png"
+                alt=""
+                className="platform-beam-img"
+                aria-hidden="true"
+                draggable={false}
+              />
 
               {/* New cyan high-tech platform (user provided) */}
               <img
