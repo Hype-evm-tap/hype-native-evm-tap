@@ -1214,6 +1214,17 @@ showToast(data.error || 'Already checked in today');
     await verifyTask(taskId);
   };
 
+  const startYouTubeVerification = async (taskId) => {
+    setTaskVerification((s) => ({ ...s, [taskId]: 'checking' }));
+    const data = await api('/api/youtube/connect', { method: 'POST', body: JSON.stringify({ task_id: taskId }) });
+    if (data.auth_url) {
+      window.location.href = data.auth_url;
+      return;
+    }
+    setTaskVerification((s) => ({ ...s, [taskId]: 'not_member' }));
+    showToast(data.error || 'Google verification could not start.');
+  };
+
   const completeTask = async (taskId) => {
     if (completedTasks.includes(taskId) || taskVerification[taskId] !== 'verified') return;
     setTaskVerification((s) => ({ ...s, [taskId]: 'claiming' }));
@@ -1915,6 +1926,10 @@ const locked = !claimed && !current;
                     ) : verified ? (
                       <button className="btn btn-primary task-action-btn" disabled={status === 'claiming'} onClick={() => completeTask(t.id)}>
                         {status === 'claiming' ? 'Claiming…' : 'Claim'}
+                      </button>
+                    ) : taskType === 'youtube' ? (
+                      <button className="btn btn-primary task-action-btn" disabled={status === 'checking'} onClick={() => startYouTubeVerification(t.id)}>
+                        {status === 'checking' ? 'Connecting…' : 'Verify with Google'}
                       </button>
                     ) : (
                       <button className="btn btn-primary task-action-btn" disabled={waiting} onClick={() => joinTask(t)}>
