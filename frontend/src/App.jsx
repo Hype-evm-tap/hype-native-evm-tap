@@ -38,6 +38,9 @@ function formatTime(sec) {
 
 // Lucide / Feather style SVG icons (JVault-like)
 const SVGS = {
+  telegram: (<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.7 3.3 18.6 20c-.2 1.2-.9 1.5-1.8.9l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5.1 9.3-8.4c.4-.4-.1-.6-.6-.2L6 13.5 1 12c-1.1-.3-1.1-1 .2-1.5L20.5 3c.9-.3 1.6.2 1.2 1.3Z"/></svg>),
+  youtube: (<svg viewBox="0 0 24 24" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8ZM9.6 15.6V8.4L15.8 12l-6.2 3.6Z"/></svg>),
+  globe: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg>),
   zap: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
@@ -225,6 +228,7 @@ export default function App() {
   const [candles, setCandles] = useState([]); // OHLCV from Hyperliquid
   const [chartInterval, setChartInterval] = useState('1h');
   const [mcap, setMcap] = useState(0);
+  const [supplyStats, setSupplyStats] = useState(null);
   const [dayChange, setDayChange] = useState(0);
   const [dayVol, setDayVol] = useState(0);
   const [dayHigh, setDayHigh] = useState(0);
@@ -394,6 +398,18 @@ const [broadcastSending, setBroadcastSending] = useState(false);
     }
   }, []);
 
+  // Live global HYPE supply from CoinGecko, distinct from app rewards.
+  const fetchSupply = useCallback(async () => {
+    try {
+      const res = await fetch('https://api.coingecko.com/api/v3/coins/hyperliquid?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false');
+      if (!res.ok) return;
+      const data = await res.json();
+      const circulating = Number(data?.market_data?.circulating_supply) || 0;
+      const max = Number(data?.market_data?.max_supply) || 1000000000;
+      if (circulating > 0) setSupplyStats({ circulating, max });
+    } catch (_) {}
+  }, []);
+
   // Live HYPE market stats (price, mcap, 24h vol/change)
   const fetchMarket = useCallback(async () => {
     try {
@@ -480,12 +496,14 @@ const [broadcastSending, setBroadcastSending] = useState(false);
     loadUser();
     fetchMarket();
     fetchCandles(chartInterval);
+    fetchSupply();
     const iv = setInterval(() => {
       fetchMarket();
       fetchCandles(chartInterval);
-    }, 30000);
+      fetchSupply();
+    }, 300000);
     return () => clearInterval(iv);
-  }, [loadUser, fetchMarket, fetchCandles, chartInterval]);
+  }, [loadUser, fetchMarket, fetchCandles, fetchSupply, chartInterval]);
 
   // Keep energyRef in sync
   useEffect(() => {
@@ -1511,8 +1529,13 @@ user: tg?.initDataUnsafe?.user,
             </div>
           </div>
 
-<div className="hl-native-tag">
-            Hyperliquid Native
+<div className="hl-native-tag"><Icon name="globe" size={15} /> HYPERLIQUID NATIVE</div>
+          <div className="global-supply-card">
+            <div className="global-supply-head"><div><div className="global-supply-kicker">NETWORK TOKENOMICS</div><div className="global-supply-title">Global HYPE Supply</div></div><span className="global-supply-live"><i /> LIVE DATA</span></div>
+            <div className="global-supply-main"><div><span>Circulating supply</span><strong>{supplyStats ? (supplyStats.circulating / 1e6).toFixed(2) + 'M' : '—'} <small>HYPE</small></strong></div><div><span>Max supply</span><strong>{supplyStats ? (supplyStats.max / 1e9).toFixed(2) + 'B' : '1.00B'} <small>HYPE</small></strong></div></div>
+            <div className="supply-track"><div style={{width: supplyStats ? Math.min(100, supplyStats.circulating / supplyStats.max * 100) + '%' : '0%'}} /></div>
+            <div className="supply-foot"><span>{supplyStats ? (supplyStats.circulating / supplyStats.max * 100).toFixed(2) + '% circulating' : 'Loading supply data…'}</span><span>Not mined by this app</span></div>
+            <div className="app-rewards-strip"><Icon name="wallet" size={16}/><span>Your Hype Tap balance</span><strong>{formatNum(user?.balance || 0, 12)} HYPE</strong></div>
           </div>
 
           {/* JVault-style live HYPE / USDT chart */}
@@ -1869,15 +1892,19 @@ const locked = !claimed && !current;
             </button>
           </div>
 
-          <h3 style={{ margin: '16px 0 12px', color: '#00ff88' }}>Tasks & Rewards</h3>
+          <h3 className="section-heading"><Icon name="gift" size={18} /> Tasks & Rewards</h3>
           {tasks.length === 0 && <div className="card">No tasks yet. Check back later.</div>}
           {tasks.map((t) => {
             const status = taskVerification[t.id] || 'not_member';
             const verified = status === 'verified' || pendingTasks.includes(t.id);
             const waiting = status === 'waiting' || status === 'checking';
+            const taskLink = String(t.link || '').toLowerCase();
+            const taskType = String(t.type || '').toLowerCase();
+            const platformIcon = taskType === 'youtube' || /youtube\.com|youtu\.be/.test(taskLink) ? 'youtube' : taskType === 'telegram' || /t\.me\//.test(taskLink) ? 'telegram' : 'globe';
             return (
               <div className="card task-card" key={t.id}>
                 <div className="task-card-content">
+                  <div className="task-platform-icon"><Icon name={platformIcon} size={22} /></div>
                   <div className="task-info">
                     <div className="task-title">{t.title}</div>
                     <div className="task-reward">+{formatNum(t.reward, 12)} HYPE</div>
