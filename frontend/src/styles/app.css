@@ -3469,3 +3469,8 @@ body {
   padding-top: 42px !important;
   overflow: visible !important;
 }
+
+/* HYPE coin floats closer above the platform */
+.hype-platform-img {
+  top: 52% !important;
+}
