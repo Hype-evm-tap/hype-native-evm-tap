@@ -1227,6 +1227,15 @@ showToast(data.error || 'Already checked in today');
   useEffect(() => {
     if (tab !== 'tasks' || !tasks.length) return;
     refreshTaskMembership();
+    const onReturn = () => {
+      if (document.visibilityState === 'visible') refreshTaskMembership();
+    };
+    document.addEventListener('visibilitychange', onReturn);
+    window.addEventListener('focus', onReturn);
+    return () => {
+      document.removeEventListener('visibilitychange', onReturn);
+      window.removeEventListener('focus', onReturn);
+    };
   }, [tab, tasks]);
 
   const requestWithdraw = async () => {
@@ -1863,8 +1872,7 @@ const locked = !claimed && !current;
           <h3 style={{ margin: '16px 0 12px', color: '#00ff88' }}>Tasks & Rewards</h3>
           {tasks.length === 0 && <div className="card">No tasks yet. Check back later.</div>}
           {tasks.map((t) => {
-            const claimed = completedTasks.includes(t.id);
-            const status = taskVerification[t.id] || (claimed ? 'claimed' : 'not_member');
+            const status = taskVerification[t.id] || 'not_member';
             const verified = status === 'verified' || pendingTasks.includes(t.id);
             const waiting = status === 'waiting' || status === 'checking';
             return (
@@ -1875,7 +1883,7 @@ const locked = !claimed && !current;
                     <div className="task-reward">+{formatNum(t.reward, 12)} HYPE</div>
                   </div>
                   <div className="task-action">
-                    {claimed || status === 'claimed' ? (
+                    {status === 'claimed' ? (
                       <span className="task-done-badge"><Icon name="check" size={14} /> Claimed</span>
                     ) : verified ? (
                       <button className="btn btn-primary task-action-btn" disabled={status === 'claiming'} onClick={() => completeTask(t.id)}>
