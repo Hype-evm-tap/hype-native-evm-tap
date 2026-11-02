@@ -560,7 +560,7 @@ app.post('/api/admin/tasks', async (c) => {
   const type = String(b.type || 'telegram').trim().toLowerCase();
   const link = String(b.link || '').trim().slice(0, 500);
   const reward = Number(b.reward);
-  if (!title || !link || !Number.isFinite(reward) || reward < 0 || reward > 1000000) return c.json({ error: 'Invalid task title, link or reward' }, 400);
+  if (!title || !link || type !== 'telegram' || !Number.isFinite(reward) || reward < 0 || reward > 1000000) return c.json({ error: 'Only public Telegram channel tasks with a valid title, link and reward are supported' }, 400);
   const info = await c.env.DB.prepare('INSERT INTO tasks (title, type, link, reward, is_active) VALUES (?, ?, ?, ?, 1)').bind(title, type, link, reward).run();
   return c.json({ success: true, id: info.meta.last_row_id });
 });
@@ -635,7 +635,7 @@ app.post('/api/admin/broadcast', async (c) => {
   const message = String(body.message || '').trim();
   const photo = String(body.photo || '').trim();
   if ((!message && !photo) || message.length > 1024 && photo || message.length > 4096) return c.json({ error: 'Message must be 1–4096 characters, or a photo with a caption up to 1024 characters' }, 400);
-  if (photo && !/^https:\\/\\//i.test(photo)) return c.json({ error: 'Photo URL must use HTTPS' }, 400);
+  if (photo && !/^https:\/\//i.test(photo)) return c.json({ error: 'Photo URL must use HTTPS' }, 400);
   if (!c.env.BOT_TOKEN) return c.json({ error: 'Telegram bot token is not configured' }, 503);
   const { results } = await c.env.DB.prepare('SELECT id FROM users ORDER BY id').all();
   let sent = 0, failed = 0;
