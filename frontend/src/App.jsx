@@ -984,11 +984,7 @@ showToast(data.error || 'Already checked in today');
       });
     }
     if (tab === 'friends') {
-      // POST so body.user is sent (GET had no user → empty list)
-      api('/api/referrals', {
-        method: 'POST',
-        body: JSON.stringify({ user: window.Telegram?.WebApp?.initDataUnsafe?.user || tg?.initDataUnsafe?.user }),
-      }).then((d) => {
+      api('/api/referrals').then((d) => {
         if (d.error) {
           console.error('referrals error', d.error);
           return;
