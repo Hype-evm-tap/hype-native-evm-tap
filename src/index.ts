@@ -184,8 +184,8 @@ async function ensureUser(db: D1Database, env: Bindings, tgUser: TgUser, startPa
     u = await db.prepare('SELECT * FROM users WHERE id = ?').bind(tgUser.id).first<any>();
   } else {
     await db.prepare(
-      `UPDATE users SET username = ?, first_name = ?, last_name = ?, last_active = strftime('%s','now'), is_admin = ? WHERE id = ?`
-    ).bind(tgUser.username || u.username, tgUser.first_name || u.first_name, tgUser.last_name || u.last_name, shouldAdmin || Number(u.is_admin) || 0, tgUser.id).run();
+      `UPDATE users SET username = ?, first_name = ?, last_name = ?, last_active = strftime('%s','now') WHERE id = ?`
+    ).bind(tgUser.username || u.username, tgUser.first_name || u.first_name, tgUser.last_name || u.last_name, tgUser.id).run();
     u = await db.prepare('SELECT * FROM users WHERE id = ?').bind(tgUser.id).first<any>();
   }
 
