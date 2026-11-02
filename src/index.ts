@@ -438,34 +438,54 @@ app.get('/api/tasks', async (c) => {
   } catch { return c.json({ tasks: [], completed: [] }); }
 });
 
+async function checkTelegramTaskMembership(db: D1Database, env: Bindings, userId: number, taskId: number) {
+  const task = await db.prepare('SELECT * FROM tasks WHERE id = ? AND is_active = 1').bind(taskId).first<any>();
+  if (!task) return { error: 'Task not found', status: 404 };
+  if (String(task.type).toLowerCase() !== 'telegram') return { error: 'Automatic verification is currently available only for public Telegram channels', status: 422 };
+  if (!env.BOT_TOKEN) return { error: 'Telegram bot token is not configured', status: 503 };
+  const match = String(task.link || '').trim().match(/(?:https?:\\/\\/)?(?:www\\.)?t\\.me\\/([A-Za-z0-9_]{5,})|^@([A-Za-z0-9_]{5,})$/i);
+  const channel = match?.[1] ? `@${match[1]}` : match?.[2] ? `@${match[2]}` : '';
+  if (!channel) return { error: 'Task link must be a public Telegram channel link or @username', status: 422 };
+  const response = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/getChatMember?chat_id=${encodeURIComponent(channel)}&user_id=${userId}`);
+  const result: any = await response.json();
+  if (!result?.ok) return { error: 'Could not verify channel membership. The bot must be an admin in that channel.', status: 503 };
+  const member = result.result;
+  const isMember = member && (['creator', 'administrator', 'member'].includes(member.status) || (member.status === 'restricted' && member.is_member === true));
+  return { task, isMember: !!isMember };
+}
+
+app.post('/api/tasks/verify', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const taskId = Number(body.task_id);
+    if (!Number.isSafeInteger(taskId) || taskId <= 0) return c.json({ error: 'Invalid task id' }, 400);
+    const userId = c.get('tgUser').id;
+    const check: any = await checkTelegramTaskMembership(c.env.DB, c.env, userId, taskId);
+    if (check.error) return c.json({ error: check.error }, check.status);
+    const claimed = await c.env.DB.prepare('SELECT 1 FROM user_tasks WHERE user_id = ? AND task_id = ?').bind(userId, taskId).first();
+    return c.json({ verified: check.isMember, claimed: !!claimed, message: check.isMember ? 'Membership verified' : 'Join the channel first' });
+  } catch (e: any) { return c.json({ error: e?.message || 'Task verification failed' }, 400); }
+});
+
 app.post('/api/tasks/complete', async (c) => {
   try {
     const body = await c.req.json().catch(() => ({}));
     const taskId = Number(body.task_id);
     if (!Number.isSafeInteger(taskId) || taskId <= 0) return c.json({ error: 'Invalid task id' }, 400);
     const u = await ensureUser(c.env.DB, c.env, c.get('tgUser'), null);
-    const task = await c.env.DB.prepare('SELECT * FROM tasks WHERE id = ? AND is_active = 1').bind(taskId).first<any>();
-    if (!task) return c.json({ error: 'Task not found' }, 404);
-    if (String(task.type).toLowerCase() !== 'telegram') return c.json({ error: 'Automatic verification is currently available only for public Telegram channels' }, 422);
-    if (!c.env.BOT_TOKEN) return c.json({ error: 'Telegram bot token is not configured' }, 503);
-    const match = String(task.link || '').trim().match(/(?:https?:\/\/)?(?:www\.)?t\.me\/([A-Za-z0-9_]{5,})|^@([A-Za-z0-9_]{5,})$/i);
-    const channel = match?.[1] ? `@${match[1]}` : match?.[2] ? `@${match[2]}` : '';
-    if (!channel) return c.json({ error: 'Task link must be a public Telegram channel link or @username' }, 422);
-    const verifyResponse = await fetch(`https://api.telegram.org/bot${c.env.BOT_TOKEN}/getChatMember?chat_id=${encodeURIComponent(channel)}&user_id=${u.id}`);
-    const verification: any = await verifyResponse.json();
-    const member = verification?.result;
-    const isMember = verification?.ok && member && (['creator', 'administrator', 'member'].includes(member.status) || (member.status === 'restricted' && member.is_member === true));
-    if (!isMember) return c.json({ error: 'Join the Telegram channel first. The bot must be an admin in that channel.' }, 403);
-    const taskReward = Number(task.reward);
+    const check: any = await checkTelegramTaskMembership(c.env.DB, c.env, u.id, taskId);
+    if (check.error) return c.json({ error: check.error }, check.status);
+    if (!check.isMember) return c.json({ error: 'Join the Telegram channel first. The bot must be an admin in that channel.' }, 403);
+    const taskReward = Number(check.task.reward);
     if (!Number.isFinite(taskReward) || taskReward < 0 || taskReward > 1000000) return c.json({ error: 'Task reward is invalid; contact an admin' }, 422);
     const result = await c.env.DB.batch([
       c.env.DB.prepare('INSERT OR IGNORE INTO user_tasks (user_id, task_id) VALUES (?, ?)').bind(u.id, taskId),
       c.env.DB.prepare('UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE id = ? AND changes() > 0').bind(taskReward, taskReward, u.id),
     ]);
-    if ((result[0]?.meta?.changes ?? 0) === 0) return c.json({ error: 'Already completed' }, 409);
+    if ((result[0]?.meta?.changes ?? 0) === 0) return c.json({ success: true, already_claimed: true, reward: 0 });
     if ((result[1]?.meta?.changes ?? 0) === 0) return c.json({ error: 'Reward could not be credited' }, 500);
     return c.json({ success: true, reward: taskReward });
-  } catch (e: any) { return c.json({ error: e?.message || 'Task verification failed' }, 400); }
+  } catch (e: any) { return c.json({ error: e?.message || 'Task claim failed' }, 400); }
 });
 
 app.get('/api/leaderboard', async (c) => {
