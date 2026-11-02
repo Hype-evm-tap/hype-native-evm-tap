@@ -383,7 +383,9 @@ app.post('/api/tap', async (c) => {
       return c.json({ error: 'Energy depleted', energy: 0, energy_reset_at: resetAt, balance: Number(u.balance) || 0, wait_seconds: Math.max(0, resetAt - t) }, 429);
     }
 
-    const taps = Math.max(1, Math.min(50, parseInt(body.taps || 1, 10)));
+    const requestedTaps = Number(body.taps ?? 1);
+    if (!Number.isSafeInteger(requestedTaps) || requestedTaps < 1) return c.json({ error: 'Invalid tap count' }, 400);
+    const taps = Math.min(50, requestedTaps);
     const actualTaps = Math.min(taps, energy);
     const earned = actualTaps * rewardPer;
 
@@ -440,7 +442,7 @@ app.post('/api/tasks/complete', async (c) => {
     if (!task) return c.json({ error: 'Task not found' }, 404);
     if (String(task.type).toLowerCase() !== 'telegram') return c.json({ error: 'Automatic verification is currently available only for public Telegram channels' }, 422);
     if (!c.env.BOT_TOKEN) return c.json({ error: 'Telegram bot token is not configured' }, 503);
-    const match = String(task.link || '').trim().match(/(?:https?:\\/\\/)?(?:www\\.)?t\\.me\\/([A-Za-z0-9_]{5,})|^@([A-Za-z0-9_]{5,})$/i);
+    const match = String(task.link || '').trim().match(/(?:https?:\/\/)?(?:www\.)?t\.me\/([A-Za-z0-9_]{5,})|^@([A-Za-z0-9_]{5,})$/i);
     const channel = match?.[1] ? `@${match[1]}` : match?.[2] ? `@${match[2]}` : '';
     if (!channel) return c.json({ error: 'Task link must be a public Telegram channel link or @username' }, 422);
     const verifyResponse = await fetch(`https://api.telegram.org/bot${c.env.BOT_TOKEN}/getChatMember?chat_id=${encodeURIComponent(channel)}&user_id=${u.id}`);
@@ -448,13 +450,15 @@ app.post('/api/tasks/complete', async (c) => {
     const member = verification?.result;
     const isMember = verification?.ok && member && (['creator', 'administrator', 'member'].includes(member.status) || (member.status === 'restricted' && member.is_member === true));
     if (!isMember) return c.json({ error: 'Join the Telegram channel first. The bot must be an admin in that channel.' }, 403);
+    const taskReward = Number(task.reward);
+    if (!Number.isFinite(taskReward) || taskReward < 0 || taskReward > 1000000) return c.json({ error: 'Task reward is invalid; contact an admin' }, 422);
     const result = await c.env.DB.batch([
       c.env.DB.prepare('INSERT OR IGNORE INTO user_tasks (user_id, task_id) VALUES (?, ?)').bind(u.id, taskId),
-      c.env.DB.prepare('UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE id = ? AND changes() > 0').bind(Number(task.reward), Number(task.reward), u.id),
+      c.env.DB.prepare('UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE id = ? AND changes() > 0').bind(taskReward, taskReward, u.id),
     ]);
     if ((result[0]?.meta?.changes ?? 0) === 0) return c.json({ error: 'Already completed' }, 409);
     if ((result[1]?.meta?.changes ?? 0) === 0) return c.json({ error: 'Reward could not be credited' }, 500);
-    return c.json({ success: true, reward: Number(task.reward) });
+    return c.json({ success: true, reward: taskReward });
   } catch (e: any) { return c.json({ error: e?.message || 'Task verification failed' }, 400); }
 });
 
