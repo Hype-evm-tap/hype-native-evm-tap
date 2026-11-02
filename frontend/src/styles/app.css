@@ -3330,3 +3330,142 @@ body {
 .atf-coin-wrap {
   z-index: 6 !important;
 }
+
+/* ========== Ornate ATF-style ASSETS banner (no ATF text) ========== */
+
+.assets-card.atf-assets {
+  position: relative !important;
+  margin: 22px 14px 12px !important;
+  padding: 36px 14px 16px !important;
+  background: linear-gradient(160deg, rgba(18, 14, 4, 0.97), rgba(8, 6, 2, 0.98)) !important;
+  border: 1.5px solid rgba(212, 175, 55, 0.45) !important;
+  border-radius: 18px !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 215, 100, 0.2),
+    0 0 30px rgba(212, 175, 55, 0.25),
+    inset 0 0 40px rgba(255, 200, 60, 0.06) !important;
+  overflow: visible !important;
+}
+
+/* Ornate header row: crown + ASSETS text */
+.assets-ornate-header {
+  position: absolute !important;
+  top: -26px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 2px !important;
+  z-index: 6 !important;
+  pointer-events: none !important;
+  width: auto !important;
+}
+
+.assets-ornate-header .assets-crown-main {
+  width: 38px !important;
+  height: 38px !important;
+  object-fit: contain !important;
+  filter: drop-shadow(0 0 12px rgba(255, 200, 60, 0.75)) !important;
+  margin-bottom: -2px !important;
+  animation: crownFloat 3s ease-in-out infinite !important;
+}
+
+.assets-ornate-header .assets-label {
+  position: static !important;
+  transform: none !important;
+  margin: 0 !important;
+  padding: 3px 22px !important;
+  font-size: 0.78rem !important;
+  font-weight: 900 !important;
+  letter-spacing: 4px !important;
+  color: #ffe566 !important;
+  background: linear-gradient(90deg, #1a1408, #0a0804) !important;
+  border: 1px solid rgba(255, 215, 100, 0.55) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 0 14px rgba(255, 200, 60, 0.35) !important;
+  text-shadow: 0 0 8px rgba(255, 215, 80, 0.5) !important;
+  -webkit-text-fill-color: #ffe566 !important;
+  background-clip: border-box !important;
+}
+
+/* Balance banner looks like the dark gold bar in the reference */
+.atf-balance-banner {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  margin: 10px auto 8px !important;
+  padding: 12px 22px !important;
+  max-width: 92% !important;
+  border-radius: 16px !important;
+  background: linear-gradient(180deg, rgba(40, 30, 8, 0.95), rgba(18, 12, 3, 0.98)) !important;
+  border: 1.5px solid rgba(255, 215, 100, 0.5) !important;
+  box-shadow:
+    0 0 18px rgba(255, 200, 60, 0.22),
+    inset 0 1px 0 rgba(255, 230, 150, 0.18) !important;
+}
+
+.atf-balance-banner .balance-amount {
+  font-size: 1.55rem !important;
+  font-weight: 900 !important;
+  color: #fff8e0 !important;
+  text-shadow: 0 0 16px rgba(255, 215, 80, 0.55) !important;
+  letter-spacing: 0.5px !important;
+}
+
+.atf-balance-banner .balance-symbol {
+  font-size: 1.05rem !important;
+  font-weight: 800 !important;
+  color: #ffe566 !important;
+  letter-spacing: 1px !important;
+}
+
+/* Hide old separate crowns container if any leftover */
+.assets-crowns {
+  display: none !important;
+}
+
+/* Crown fully removed from ASSETS */
+.assets-crown-main,
+.assets-crowns,
+.assets-crown-img {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+.assets-ornate-header {
+  top: -18px !important;
+}
+
+/* Ornate ASSETS banner image (replaces old text) */
+.assets-ornate-header {
+  position: absolute !important;
+  top: -32px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: 92% !important;
+  max-width: 340px !important;
+  z-index: 6 !important;
+  pointer-events: none !important;
+  display: flex !important;
+  justify-content: center !important;
+}
+.assets-banner-img {
+  width: 100% !important;
+  height: auto !important;
+  max-height: 70px !important;
+  object-fit: contain !important;
+  display: block !important;
+  filter: drop-shadow(0 4px 12px rgba(0,0,0,0.6));
+}
+/* Hide any leftover old ASSETS text */
+.assets-label {
+  display: none !important;
+}
+.assets-card.atf-assets {
+  padding-top: 42px !important;
+  overflow: visible !important;
+}
