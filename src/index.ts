@@ -37,7 +37,7 @@ type TgUser = {
   last_name?: string;
 };
 
-const app = new Hono<{ Bindings: Bindings }>();
+const app = new Hono<{ Bindings: Bindings; Variables: { tgUser: TgUser } }>();
 app.use('*', cors({
   origin: '*',
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -115,6 +115,34 @@ function computeCanCheckin(lastCheckinAt: number) {
 function isStreakBroken(lastCheckinAt: number) {
   if (!lastCheckinAt) return false;
   return nowSec() - toUnixSeconds(lastCheckinAt) > 86400 * 2;
+}
+
+
+async function verifyTelegramInitData(raw: string, botToken: string): Promise<TgUser | null> {
+  if (!raw || !botToken) return null;
+  try {
+    const params = new URLSearchParams(raw);
+    const hash = params.get('hash');
+    if (!hash || !/^[a-f0-9]{64}$/i.test(hash)) return null;
+    params.delete('hash');
+    const authDate = Number(params.get('auth_date'));
+    if (!Number.isFinite(authDate) || authDate > nowSec() + 60 || nowSec() - authDate > 86400) return null;
+    const dataCheckString = [...params.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}=${v}`).join('\n');
+    const enc = new TextEncoder();
+    const baseKey = await crypto.subtle.importKey('raw', enc.encode('WebAppData'), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const secret = await crypto.subtle.sign('HMAC', baseKey, enc.encode(botToken));
+    const hmacKey = await crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const digest = new Uint8Array(await crypto.subtle.sign('HMAC', hmacKey, enc.encode(dataCheckString)));
+    const actual = [...digest].map((b) => b.toString(16).padStart(2, '0')).join('');
+    let diff = actual.length ^ hash.length;
+    for (let i = 0; i < Math.min(actual.length, hash.length); i++) diff |= actual.charCodeAt(i) ^ hash.toLowerCase().charCodeAt(i);
+    if (diff !== 0) return null;
+    const userRaw = params.get('user');
+    if (!userRaw) return null;
+    const user = JSON.parse(userRaw);
+    if (!Number.isSafeInteger(Number(user?.id)) || Number(user.id) <= 0) return null;
+    return { id: Number(user.id), username: user.username || '', first_name: user.first_name || '', last_name: user.last_name || '' };
+  } catch { return null; }
 }
 
 function adminSet(env: Bindings) {
@@ -218,6 +246,19 @@ async function listReferrals(db: D1Database, userId: number) {
   return { referrals: list, count: list.length };
 }
 
+
+app.use('/api/*', async (c, next) => {
+  const path = new URL(c.req.url).pathname;
+  if (['/api/health', '/api/config', '/api/price'].includes(path)) return next();
+  const identity = await verifyTelegramInitData(c.req.header('X-Telegram-Init-Data') || '', c.env.BOT_TOKEN || '');
+  if (!identity) return c.json({ error: 'Unauthorized: valid Telegram session required' }, 401);
+  c.set('tgUser', identity);
+  if (path.startsWith('/api/admin/') && !adminSet(c.env).has(identity.id)) {
+    return c.json({ error: 'Forbidden: admin only' }, 403);
+  }
+  return next();
+});
+
 // ──── Routes ────
 
 app.get('/api/health', (c) => c.json({ ok: true, time: new Date().toISOString() }));
@@ -243,7 +284,7 @@ app.get('/api/price', async (c) => {
 app.post('/api/user', async (c) => {
   try {
     const body = await c.req.json().catch(() => ({}));
-    const tgUser = body.user as TgUser;
+    const tgUser = c.get('tgUser');
     if (!tgUser?.id) return c.json({ error: 'Unauthorized' }, 401);
     const startParam = body.start_param || body.ref || body.referrer_id || null;
     const u = await ensureUser(c.env.DB, c.env, tgUser, startParam);
@@ -389,12 +430,11 @@ app.get('/api/tasks', async (c) => {
 app.post('/api/tasks/complete', async (c) => {
   try {
     const body = await c.req.json();
-    const u = await ensureUser(c.env.DB, c.env, body.user, null);
+    const u = await ensureUser(c.env.DB, c.env, c.get('tgUser'), null);
     const task = await c.env.DB.prepare('SELECT * FROM tasks WHERE id = ? AND is_active = 1').bind(body.task_id).first<any>();
     if (!task) return c.json({ error: 'Task not found' }, 404);
-    const done = await c.env.DB.prepare('SELECT 1 FROM user_tasks WHERE user_id = ? AND task_id = ?').bind(u.id, body.task_id).first();
-    if (done) return c.json({ error: 'Already completed' }, 400);
-    await c.env.DB.prepare('INSERT INTO user_tasks (user_id, task_id) VALUES (?, ?)').bind(u.id, body.task_id).run();
+    const claim = await c.env.DB.prepare('INSERT OR IGNORE INTO user_tasks (user_id, task_id) VALUES (?, ?)').bind(u.id, body.task_id).run();
+    if ((claim.meta?.changes ?? 0) === 0) return c.json({ error: 'Already completed' }, 409);
     await c.env.DB.prepare('UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE id = ?').bind(task.reward, task.reward, u.id).run();
     return c.json({ success: true, reward: task.reward });
   } catch (e: any) { return c.json({ error: e.message }, 400); }
@@ -409,17 +449,16 @@ app.get('/api/leaderboard', async (c) => {
 
 // FIX: was hard-coded []
 app.get('/api/referrals', async (c) => {
-  const qid = parseInt(c.req.query('user_id') || '0', 10);
-  if (!qid) return c.json({ referrals: [], count: 0 });
-  return c.json(await listReferrals(c.env.DB, qid));
+  const authUser = c.get('tgUser');
+  return c.json(await listReferrals(c.env.DB, authUser.id));
 });
 
 app.post('/api/referrals', async (c) => {
   try {
     const body = await c.req.json().catch(() => ({}));
-    if (!body.user?.id) return c.json({ error: 'User required' }, 400);
-    await ensureUser(c.env.DB, c.env, body.user, null);
-    return c.json(await listReferrals(c.env.DB, body.user.id));
+    const authUser = c.get('tgUser');
+    await ensureUser(c.env.DB, c.env, authUser, null);
+    return c.json(await listReferrals(c.env.DB, authUser.id));
   } catch (e: any) { return c.json({ error: e.message }, 400); }
 });
 
@@ -427,23 +466,27 @@ app.post('/api/withdraw', async (c) => {
   try {
     const body = await c.req.json();
     const u = await ensureUser(c.env.DB, c.env, body.user, null);
-    const amount = parseFloat(body.amount);
+    const amount = Number(body.amount);
     const wallet = String(body.wallet_address || u.wallet_address || '').trim();
     const min = parseFloat(await getSetting(c.env.DB, 'min_withdraw')) || 2;
     if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) return c.json({ error: 'Enter a valid HyperEVM wallet address' }, 400);
-    if (!amount || amount < min) return c.json({ error: `Min ${min} HYPE` }, 400);
+    if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(min) || amount < min) return c.json({ error: `Min ${min} HYPE` }, 400);
     const debit = await c.env.DB.prepare('UPDATE users SET balance = balance - ?, wallet_address = ? WHERE id = ? AND balance >= ?').bind(amount, wallet, u.id, amount).run();
     if ((debit.meta?.changes ?? 0) === 0) return c.json({ error: 'Insufficient balance' }, 400);
-    await c.env.DB.prepare("INSERT INTO withdrawals (user_id, amount, wallet_address, status) VALUES (?, ?, ?, 'pending')").bind(u.id, amount, wallet).run();
+    try {
+      await c.env.DB.prepare("INSERT INTO withdrawals (user_id, amount, wallet_address, status) VALUES (?, ?, ?, 'pending')").bind(u.id, amount, wallet).run();
+    } catch (insertError) {
+      await c.env.DB.prepare('UPDATE users SET balance = balance + ? WHERE id = ?').bind(amount, u.id).run();
+      throw insertError;
+    }
     const updated = await c.env.DB.prepare('SELECT balance FROM users WHERE id = ?').bind(u.id).first<any>();
     return c.json({ success: true, balance: Number(updated?.balance) || 0, message: 'Withdrawal request submitted' });
   } catch (e: any) { return c.json({ error: e.message }, 400); }
 });
 
 app.get('/api/withdrawals', async (c) => {
-  const qid = parseInt(c.req.query('user_id') || '0', 10);
-  if (!qid) return c.json({ withdrawals: [] });
-  const { results } = await c.env.DB.prepare('SELECT * FROM withdrawals WHERE user_id = ? ORDER BY id DESC LIMIT 50').bind(qid).all();
+  const authUser = c.get('tgUser');
+  const { results } = await c.env.DB.prepare('SELECT * FROM withdrawals WHERE user_id = ? ORDER BY id DESC LIMIT 50').bind(authUser.id).all();
   return c.json({ withdrawals: results || [] });
 });
 
