@@ -1,0 +1,30 @@
+HYPE EVM BACKEND SECURITY PATCH
+
+1) Copy src/security.ts into your repository at src/security.ts.
+2) In src/index.ts, add this import beside the other imports:
+   import { telegramAuth, requireAdmin, authenticatedTelegramUser } from './security';
+3) Immediately AFTER the existing app.use('*', cors(...)) block and BEFORE the first app.get('/api/health', ...) route, add:
+   app.use('/api/*', telegramAuth);
+   app.use('/api/admin/*', requireAdmin);
+   (Hono applies middleware in registration order. Keep these lines before all API route declarations.)
+4) In each handler that currently trusts body.user, replace the identity source with:
+   const tgUser = authenticatedTelegramUser(c);
+   This applies to /api/user, /api/wallet, /api/checkin, /api/tap, /api/tasks/complete,
+   /api/referrals POST, /api/withdraw, and /api/withdrawals POST.
+   Do not use body.user as the authority. The middleware rejects a mismatched body.user, and
+   authenticatedTelegramUser(c) gives you the signed Telegram identity.
+5) GET /api/referrals and GET /api/withdrawals already have user_id query checks in middleware;
+   keep those checks and use c.get('telegramUser').id for the SQL query instead of parsing user_id.
+6) BOT_TOKEN must be set as a Cloudflare Worker secret. Do not put it in [vars] or frontend code.
+   ADMIN_ID / ADMIN_IDS can remain Worker vars. Keep the existing WalletConnect Project ID as a public config value.
+7) Frontend must send the exact Telegram WebApp initData in X-Telegram-Init-Data. The current uploaded
+   App.jsx already does this in its shared API helper. Do not send initDataUnsafe as authentication.
+
+IMPORTANT:
+- The security middleware protects every /api route except /api/health, /api/config, /api/price.
+- Admin routes are additionally restricted to ADMIN_ID / ADMIN_IDS.
+- This is a security patch module, not a complete replacement for src/index.ts. The pasted backend
+  still needs the handler identity substitutions in step 4 and 5 before deployment.
+- Task completion and withdrawal transaction logic should also be changed to atomic/idempotent SQL
+  before enabling real-value rewards. This patch does not claim to complete those transaction fixes.
+- Test in a staging D1 database before production deployment.
