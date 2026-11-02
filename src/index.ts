@@ -28,6 +28,9 @@ type Bindings = {
   REFERRAL_REWARD?: string;
   ENERGY_MAX?: string;
   ENERGY_COOLDOWN_SEC?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  GOOGLE_REDIRECT_URI?: string;
 };
 
 type TgUser = {
@@ -272,6 +275,69 @@ app.use('/api/*', async (c, next) => {
 
 // ──── Routes ────
 
+app.post('/api/youtube/connect', async (c) => {
+  try {
+    if (!c.env.GOOGLE_CLIENT_ID || !c.env.GOOGLE_CLIENT_SECRET) return c.json({ error: 'Google OAuth is not configured yet.' }, 503);
+    const body = await c.req.json().catch(() => ({}));
+    const taskId = Number(body.task_id);
+    if (!Number.isSafeInteger(taskId) || taskId <= 0) return c.json({ error: 'Invalid task id' }, 400);
+    const task = await c.env.DB.prepare("SELECT id, type, link FROM tasks WHERE id = ? AND is_active = 1").bind(taskId).first<any>();
+    if (!task || String(task.type).toLowerCase() !== 'youtube') return c.json({ error: 'YouTube task not found' }, 404);
+    const state = [...crypto.getRandomValues(new Uint8Array(32))].map(b => b.toString(16).padStart(2, '0')).join('');
+    await c.env.DB.prepare('INSERT INTO youtube_oauth_states (state, user_id, task_id, expires_at) VALUES (?, ?, ?, ?)')
+      .bind(state, c.get('tgUser').id, taskId, nowSec() + 600).run();
+    const redirect = c.env.GOOGLE_REDIRECT_URI || new URL('/auth/google/callback', c.req.url).toString();
+    const params = new URLSearchParams({
+      client_id: c.env.GOOGLE_CLIENT_ID, redirect_uri: redirect, response_type: 'code',
+      scope: 'https://www.googleapis.com/auth/youtube.readonly',
+      access_type: 'online', prompt: 'consent', state,
+    });
+    return c.json({ auth_url: 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString() });
+  } catch (e: any) { return c.json({ error: e?.message || 'Could not start Google verification' }, 500); }
+});
+
+app.get('/auth/google/callback', async (c) => {
+  const fail = (message: string) => c.html('<!doctype html><meta name="viewport" content="width=device-width"><title>YouTube verification</title><body style="background:#090909;color:#fff;font:16px Arial;padding:32px"><h2>Verification not completed</h2><p>' + message.replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch] || ch)) + '</p><p>Return to HYPE Tap and try again.</p></body>', 400);
+  try {
+    const code = c.req.query('code') || '';
+    const state = c.req.query('state') || '';
+    if (!code || !/^[a-f0-9]{64}$/.test(state)) return fail('Google authorization was cancelled or invalid.');
+    if (!c.env.GOOGLE_CLIENT_ID || !c.env.GOOGLE_CLIENT_SECRET) return fail('Google OAuth credentials are not configured.');
+    const pending = await c.env.DB.prepare('SELECT user_id, task_id FROM youtube_oauth_states WHERE state = ? AND expires_at > ?').bind(state, nowSec()).first<any>();
+    if (!pending) return fail('This verification link expired. Start again in HYPE Tap.');
+    await c.env.DB.prepare('DELETE FROM youtube_oauth_states WHERE state = ?').bind(state).run();
+    const redirect = c.env.GOOGLE_REDIRECT_URI || new URL('/auth/google/callback', c.req.url).toString();
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ code, client_id: c.env.GOOGLE_CLIENT_ID, client_secret: c.env.GOOGLE_CLIENT_SECRET, redirect_uri: redirect, grant_type: 'authorization_code' }),
+    });
+    const token: any = await tokenRes.json();
+    if (!tokenRes.ok || !token.access_token) return fail('Google token exchange failed. Check OAuth settings and try again.');
+    const task = await c.env.DB.prepare('SELECT id, link, reward FROM tasks WHERE id = ? AND is_active = 1 AND lower(type) = ?').bind(pending.task_id, 'youtube').first<any>();
+    if (!task) return fail('This task is no longer active.');
+    const link = String(task.link || '');
+    const handle = link.match(/youtube\.com\/@([A-Za-z0-9_.-]+)/i)?.[1] || link.match(/@([A-Za-z0-9_.-]+)/)?.[1];
+    let channelId = link.match(/youtube\.com\/channel\/(UC[A-Za-z0-9_-]+)/i)?.[1] || '';
+    if (!channelId && handle) {
+      const cr = await fetch('https://www.googleapis.com/youtube/v3/channels?part=id&forHandle=' + encodeURIComponent(handle), { headers: { Authorization: 'Bearer ' + token.access_token } });
+      const cj: any = await cr.json(); channelId = cj.items?.[0]?.id || '';
+    }
+    if (!channelId) return fail('Could not identify the channel from the task link. Admin must use its YouTube channel URL.');
+    const sr = await fetch('https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&forChannelId=' + encodeURIComponent(channelId) + '&maxResults=1', { headers: { Authorization: 'Bearer ' + token.access_token } });
+    const sj: any = await sr.json();
+    if (!sr.ok) return fail('YouTube could not verify this account. Check API access and OAuth consent settings.');
+    if (!sj.items?.length) return fail('Subscription not found. Subscribe to the channel and try again.');
+    const reward = Number(task.reward);
+    if (!Number.isFinite(reward) || reward < 0 || reward > 1000000) return fail('Task reward is invalid.');
+    const claim = await c.env.DB.batch([
+      c.env.DB.prepare('INSERT OR IGNORE INTO user_tasks (user_id, task_id) VALUES (?, ?)').bind(pending.user_id, pending.task_id),
+      c.env.DB.prepare('UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE id = ? AND changes() > 0').bind(reward, reward, pending.user_id),
+    ]);
+    const already = (claim[0]?.meta?.changes ?? 0) === 0;
+    return c.html('<!doctype html><meta name="viewport" content="width=device-width"><title>HYPE Tap</title><body style="background:#090909;color:#fff;font:16px Arial;padding:32px"><h2>' + (already ? 'Already claimed' : 'YouTube subscription verified!') + '</h2><p>' + (already ? 'This task reward was already claimed.' : 'Your HYPE reward has been added. Return to HYPE Tap.') + '</p><script>setTimeout(()=>{try{window.close()}catch(e){}},1800)</script></body>');
+  } catch (e: any) { return fail(e?.message || 'Verification failed. Please try again.'); }
+});
+
 app.get('/api/health', (c) => c.json({ ok: true, time: new Date().toISOString() }));
 
 app.get('/api/config', async (c) => {
@@ -445,9 +511,7 @@ async function checkTelegramTaskMembership(db: D1Database, env: Bindings, userId
   if (!task) return { error: 'Task not found', status: 404 };
   const taskType = String(task.type || '').toLowerCase();
   if (taskType === 'youtube') {
-    // Fail closed until server-side Google OAuth subscription verification is configured.
-    // Client-side self-confirmation must never grant rewards.
-    return { error: 'YouTube verification is being configured. Please try again later.', status: 503 };
+    return { error: 'Use the Google verification button to verify your YouTube subscription.', status: 409 };
   }
   if (taskType !== 'telegram') return { error: 'Unsupported task type', status: 422 };
   if (!env.BOT_TOKEN) return { error: 'Telegram bot token is not configured', status: 503 };
