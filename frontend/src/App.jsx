@@ -2381,10 +2381,10 @@ const locked = !claimed && !current;
                 <input className="input" placeholder="Title" value={newTask.title} onChange={(e) => setNewTask({ ...newTask, title: e.target.value })} />
                 <select className="input" value={newTask.type} onChange={(e) => setNewTask({ ...newTask, type: e.target.value })}>
                   <option value="telegram">Telegram Channel</option>
-                  <option value="youtube">YouTube (self-confirm)</option>
+                  <option value="youtube">YouTube (verification setup)</option>
                 </select>
                 <input className="input" placeholder="Link" value={newTask.link} onChange={(e) => setNewTask({ ...newTask, link: e.target.value })} />
-                <div className="muted" style={{ fontSize: 12 }}>{newTask.type === 'telegram' ? 'Public t.me channel link required. Add the bot as a channel admin for automatic membership verification.' : 'Public YouTube channel/video link required. Users self-confirm after opening; YouTube subscription is not independently verified.'}</div>
+                <div className="muted" style={{ fontSize: 12 }}>{newTask.type === 'telegram' ? 'Public t.me channel link required. Add the bot as a channel admin for automatic membership verification.' : 'YouTube subscription verification is being configured; rewards are temporarily disabled.'}</div>
 
 <input className="input" placeholder="Reward HYPE" value={newTask.reward} onChange={(e) => setNewTask({ ...newTask, reward: e.target.value })} />
                 <button className="btn btn-primary" style={{ width: '100%' }} onClick={addTask}>
