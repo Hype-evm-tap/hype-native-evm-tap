@@ -26,8 +26,15 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      - name: Report frontend dependency advisories
+        working-directory: frontend
+        run: npm audit --json > ../frontend-npm-audit.json || true
+
       - name: Install Worker dependencies
         run: npm install
+
+      - name: Report Worker dependency advisories
+        run: npm audit --json > worker-npm-audit.json || true
 
       - name: Validate Worker bundle (dry run)
         run: npx wrangler deploy --dry-run
