@@ -1378,11 +1378,9 @@ user: tg?.initDataUnsafe?.user,
       {tab === 'tap' && (
         <>
           <div className="assets-card atf-assets">
-            {/* Real 3D gold crowns above Assets */}
+            {/* Single ATF-style golden crown above ASSETS */}
             <div className="assets-crowns" aria-hidden="true">
-              <img className="assets-crown-img c1" src="https://img.icons8.com/3d-fluency/94/crown.png" alt="" draggable={false} />
-              <img className="assets-crown-img c2" src="https://img.icons8.com/3d-fluency/94/crown.png" alt="" draggable={false} />
-              <img className="assets-crown-img c3" src="https://img.icons8.com/3d-fluency/94/crown.png" alt="" draggable={false} />
+              <img className="assets-crown-main" src="/crown.png" alt="" draggable={false} />
             </div>
             <div className="assets-label">ASSETS</div>
             <div className="atf-balance-banner">
@@ -1416,6 +1414,9 @@ user: tg?.initDataUnsafe?.user,
                 <div className="atf-coin-glow" />
                 <img src="/hype-logo.png" alt="HYPE Logo" className="logo-img" draggable={false} />
               </div>
+
+              {/* Vertical lighting beam from platform up to coin */}
+              <div className="platform-beam" aria-hidden="true" />
 
               {/* New cyan high-tech platform (user provided) */}
               <img
