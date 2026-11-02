@@ -422,8 +422,12 @@ app.post('/api/tap', async (c) => {
 
 app.get('/api/tasks', async (c) => {
   try {
-    const { results } = await c.env.DB.prepare('SELECT id, title, type, link, reward FROM tasks WHERE is_active = 1 ORDER BY id DESC').all();
-    return c.json({ tasks: results || [], completed: [] });
+    const authUser = c.get('tgUser');
+    const [{ results: tasks }, { results: completedRows }] = await Promise.all([
+      c.env.DB.prepare('SELECT id, title, type, link, reward FROM tasks WHERE is_active = 1 ORDER BY id DESC').all(),
+      c.env.DB.prepare('SELECT task_id FROM user_tasks WHERE user_id = ?').bind(authUser.id).all(),
+    ]);
+    return c.json({ tasks: tasks || [], completed: (completedRows || []).map((row: any) => row.task_id) });
   } catch { return c.json({ tasks: [], completed: [] }); }
 });
 
@@ -518,20 +522,19 @@ app.get('/api/admin/withdrawals', async (c) => {
 
 app.post('/api/admin/withdrawals/:id', async (c) => {
   const body = await c.req.json().catch(() => ({}));
-  const action = body.action;
-  const id = c.req.param('id');
-  const statusMap: any = { approve: 'approved', reject: 'rejected', processing: 'processing' };
-  const status = statusMap[action] || 'rejected';
-  if (status === 'rejected') {
-    const w = await c.env.DB.prepare('SELECT * FROM withdrawals WHERE id = ?').bind(id).first<any>();
-    if (w && (w.status === 'pending' || w.status === 'processing')) {
-      await c.env.DB.prepare('UPDATE users SET balance = balance + ? WHERE id = ?').bind(w.amount, w.user_id).run();
-    }
-  }
-  await c.env.DB.prepare("UPDATE withdrawals SET status = ?, processed_at = strftime('%s','now') WHERE id = ?").bind(status, id).run();
-  return c.json({ success: true });
+  const statusMap: Record<string, string> = { approve: 'approved', reject: 'rejected', processing: 'processing' };
+  const status = statusMap[body.action];
+  if (!status) return c.json({ error: 'Invalid action' }, 400);
+  const id = Number(c.req.param('id'));
+  if (!Number.isSafeInteger(id) || id <= 0) return c.json({ error: 'Invalid withdrawal id' }, 400);
+  const statements = [
+    c.env.DB.prepare("UPDATE withdrawals SET status = ?, processed_at = strftime('%s','now') WHERE id = ? AND status IN ('pending','processing')").bind(status, id),
+    c.env.DB.prepare("UPDATE users SET balance = balance + (SELECT amount FROM withdrawals WHERE id = ?) WHERE id = (SELECT user_id FROM withdrawals WHERE id = ?) AND ? = 'rejected' AND changes() > 0").bind(id, id, status),
+  ];
+  const results = await c.env.DB.batch(statements);
+  if ((results[0]?.meta?.changes ?? 0) === 0) return c.json({ error: 'Withdrawal not found or already processed' }, 409);
+  return c.json({ success: true, status });
 });
-
 app.get('/api/admin/tasks', async (c) => {
   const { results } = await c.env.DB.prepare('SELECT * FROM tasks ORDER BY id DESC').all();
   return c.json({ tasks: results || [] });
