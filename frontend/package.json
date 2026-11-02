@@ -9,14 +9,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@walletconnect/ethereum-provider": "^2.21.1",
+    "@walletconnect/ethereum-provider": "2.19.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
-    "vite": "^5.4.3"
+    "@vitejs/plugin-react": "^5.1.1",
+    "vite": "^7.3.1"
   }
 }
