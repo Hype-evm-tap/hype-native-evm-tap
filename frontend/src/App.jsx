@@ -1177,15 +1177,21 @@ showToast(data.error || 'Already checked in today');
 
   const verifyTask = async (taskId) => {
     setTaskVerification((s) => ({ ...s, [taskId]: 'checking' }));
-    const data = await api('/api/tasks/verify', {
-      method: 'POST',
-      body: JSON.stringify({ task_id: taskId }),
-    });
+    const data = await api('/api/tasks/verify', { method: 'POST', body: JSON.stringify({ task_id: taskId }) });
+    if (data.wait_seconds > 0 && data.manual) {
+      setTaskVerification((s) => ({ ...s, [taskId]: 'waiting' }));
+      for (let seconds = Math.min(5, Number(data.wait_seconds)); seconds > 0; seconds -= 1) {
+        setTaskCountdown((s) => ({ ...s, [taskId]: seconds }));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      setTaskCountdown((s) => ({ ...s, [taskId]: 0 }));
+      return verifyTask(taskId);
+    }
     if (data.verified) {
       setTaskVerification((s) => ({ ...s, [taskId]: data.claimed ? 'claimed' : 'verified' }));
       setPendingTasks((p) => (p.includes(taskId) ? p : [...p, taskId]));
       if (data.claimed) showToast('Task already claimed earlier. No repeat reward.');
-      else showToast(data.manual ? 'YouTube task opened. Confirm your subscription, then claim once.' : 'Membership verified! Claim your reward.');
+      else showToast(data.manual ? '5-second wait complete. Claim your reward!' : 'Membership verified! Claim your reward.');
     } else {
       setTaskVerification((s) => ({ ...s, [taskId]: 'not_member' }));
       setPendingTasks((p) => p.filter((id) => id !== taskId));
@@ -1196,6 +1202,8 @@ showToast(data.error || 'Already checked in today');
   const joinTask = async (task) => {
     const taskId = task.id;
     if (!task.link) return showToast('Task link missing');
+    const isYouTube = String(task.type || '').toLowerCase() === 'youtube' || /youtube\.com|youtu\.be/i.test(task.link);
+    setTaskVerification((s) => ({ ...s, [taskId]: isYouTube ? 'waiting_return' : 'waiting' }));
     try {
       if (window.Telegram?.WebApp?.openTelegramLink && /t\.me\//i.test(task.link)) {
         window.Telegram.WebApp.openTelegramLink(task.link);
@@ -1205,24 +1213,16 @@ showToast(data.error || 'Already checked in today');
         window.open(task.link, '_blank', 'noopener,noreferrer');
       }
     } catch (_) {}
-    setTaskVerification((s) => ({ ...s, [taskId]: 'waiting' }));
+    if (isYouTube) {
+      showToast('YouTube par jaakar wapas HYPE Tap me aayein. Phir 5-second timer chalega.');
+      return;
+    }
     for (let seconds = 5; seconds > 0; seconds -= 1) {
       setTaskCountdown((s) => ({ ...s, [taskId]: seconds }));
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
     setTaskCountdown((s) => ({ ...s, [taskId]: 0 }));
     await verifyTask(taskId);
-  };
-
-  const startYouTubeVerification = async (taskId) => {
-    setTaskVerification((s) => ({ ...s, [taskId]: 'checking' }));
-    const data = await api('/api/youtube/connect', { method: 'POST', body: JSON.stringify({ task_id: taskId }) });
-    if (data.auth_url) {
-      window.location.href = data.auth_url;
-      return;
-    }
-    setTaskVerification((s) => ({ ...s, [taskId]: 'not_member' }));
-    showToast(data.error || 'Google verification could not start.');
   };
 
   const completeTask = async (taskId) => {
@@ -1245,7 +1245,8 @@ showToast(data.error || 'Already checked in today');
   };
 
   const refreshTaskMembership = async () => {
-    const results = await Promise.all(tasks.map(async (task) => {
+    const telegramTasks = tasks.filter((task) => String(task.type || '').toLowerCase() !== 'youtube');
+    const results = await Promise.all(telegramTasks.map(async (task) => {
       const data = await api('/api/tasks/verify', { method: 'POST', body: JSON.stringify({ task_id: task.id }) });
       return [task.id, data.verified && data.claimed ? 'claimed' : 'not_member'];
     }));
@@ -1253,11 +1254,20 @@ showToast(data.error || 'Already checked in today');
     setPendingTasks([]);
   };
 
+  const resumeYouTubeTasks = async () => {
+    if (document.visibilityState !== 'visible') return;
+    for (const task of tasks) {
+      if (String(task.type || '').toLowerCase() === 'youtube' && taskVerification[task.id] === 'waiting_return') {
+        await verifyTask(task.id);
+      }
+    }
+  };
+
   useEffect(() => {
     if (tab !== 'tasks' || !tasks.length) return;
     refreshTaskMembership();
     const onReturn = () => {
-      if (document.visibilityState === 'visible') refreshTaskMembership();
+      if (document.visibilityState === 'visible') resumeYouTubeTasks();
     };
     document.addEventListener('visibilitychange', onReturn);
     window.addEventListener('focus', onReturn);
@@ -1265,7 +1275,7 @@ showToast(data.error || 'Already checked in today');
       document.removeEventListener('visibilitychange', onReturn);
       window.removeEventListener('focus', onReturn);
     };
-  }, [tab, tasks]);
+  }, [tab, tasks, taskVerification]);
 
   const requestWithdraw = async () => {
     const amount = parseFloat(wdAmount);
@@ -1927,18 +1937,15 @@ const locked = !claimed && !current;
                       <button className="btn btn-primary task-action-btn" disabled={status === 'claiming'} onClick={() => completeTask(t.id)}>
                         {status === 'claiming' ? 'Claiming…' : 'Claim'}
                       </button>
-                    ) : taskType === 'youtube' ? (
-                      <button className="btn btn-primary task-action-btn" disabled={status === 'checking'} onClick={() => startYouTubeVerification(t.id)}>
-                        {status === 'checking' ? 'Connecting…' : 'Verify with Google'}
-                      </button>
                     ) : (
-                      <button className="btn btn-primary task-action-btn" disabled={waiting} onClick={() => joinTask(t)}>
-                        {waiting ? `Verify ${taskCountdown[t.id] || ''}s` : 'Join'}
+                      <button className="btn btn-primary task-action-btn" disabled={waiting || status === 'waiting_return'} onClick={() => joinTask(t)}>
+                        {waiting ? `Wait ${taskCountdown[t.id] || ''}s` : status === 'waiting_return' ? 'Return to HYPE Tap' : 'Join'}
                       </button>
                     )}
                   </div>
                 </div>
-                {waiting && <div className="task-verify-note">Joining check: {taskCountdown[t.id] || 0}s remaining</div>}
+                {waiting && <div className="task-verify-note">{taskCountdown[t.id] > 0 ? `Wait ${taskCountdown[t.id]}s to claim` : 'Checking task…'}</div>}
+                {status === 'waiting_return' && <div className="task-verify-note">YouTube link opened. Return here to start the 5-second claim timer.</div>}
               </div>
             );
           })}
@@ -2396,10 +2403,10 @@ const locked = !claimed && !current;
                 <input className="input" placeholder="Title" value={newTask.title} onChange={(e) => setNewTask({ ...newTask, title: e.target.value })} />
                 <select className="input" value={newTask.type} onChange={(e) => setNewTask({ ...newTask, type: e.target.value })}>
                   <option value="telegram">Telegram Channel</option>
-                  <option value="youtube">YouTube (verification setup)</option>
+                  <option value="youtube">YouTube Visit Task</option>
                 </select>
                 <input className="input" placeholder="Link" value={newTask.link} onChange={(e) => setNewTask({ ...newTask, link: e.target.value })} />
-                <div className="muted" style={{ fontSize: 12 }}>{newTask.type === 'telegram' ? 'Public t.me channel link required. Add the bot as a channel admin for automatic membership verification.' : 'YouTube subscription verification is being configured; rewards are temporarily disabled.'}</div>
+                <div className="muted" style={{ fontSize: 12 }}>{newTask.type === 'telegram' ? 'Public t.me channel link required. Add the bot as a channel admin for automatic membership verification.' : 'YouTube link opens for the user; they return to HYPE Tap and wait 5 seconds before claiming.'}</div>
 
 <input className="input" placeholder="Reward HYPE" value={newTask.reward} onChange={(e) => setNewTask({ ...newTask, reward: e.target.value })} />
                 <button className="btn btn-primary" style={{ width: '100%' }} onClick={addTask}>
