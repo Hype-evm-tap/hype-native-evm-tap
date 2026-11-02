@@ -547,14 +547,18 @@ const persistWallet = async (addr) => {
       showToast('Invalid EVM address');
       return false;
     }
+    const previousAddress = connectedWallet;
+    const previousWithdrawAddress = wdWallet;
     setConnectedWallet(clean);
     setWdWallet(clean);
     const data = await api('/api/wallet', {
       method: 'POST',
-      body: JSON.stringify({ user: tg?.initDataUnsafe?.user, wallet_address: clean }),
+      body: JSON.stringify({ user: window.Telegram?.WebApp?.initDataUnsafe?.user || tg?.initDataUnsafe?.user, wallet_address: clean }),
     });
     if (data?.error) {
-      showToast(data.error);
+      setConnectedWallet(previousAddress);
+      setWdWallet(previousWithdrawAddress);
+      showToast(`Wallet connected, but server save failed: ${String(data.error).slice(0, 55)}`);
       return false;
     }
     showToast('Wallet connected');
@@ -569,7 +573,8 @@ const persistWallet = async (addr) => {
       eth = eth.providers.find((p) => p.isMetaMask) || eth.providers[0];
     }
     const accounts = await eth.request({ method: 'eth_requestAccounts' });
-    return accounts?.[0] || null;
+    if (!accounts?.[0]) throw new Error('Wallet returned no account');
+    return accounts[0];
   };
 
   /**
@@ -618,8 +623,10 @@ const persistWallet = async (addr) => {
     // chains is REQUIRED (empty optionalChains-only → "configuration not found")
     const provider = await EthereumProvider.init({
       projectId,
-      chains: [1],
-      optionalChains: [56, 999], // BSC (Binance) + Hyperliquid EVM
+      // HYPE EVM uses Hyperliquid EVM mainnet (chain ID 999).
+      // Keep Ethereum and BSC optional so multi-chain wallets can still connect.
+      chains: [999],
+      optionalChains: [1, 56],
       showQrModal: true,
       methods: [
         'eth_sendTransaction',
@@ -633,9 +640,9 @@ const persistWallet = async (addr) => {
       ],
       events: ['chainChanged', 'accountsChanged', 'disconnect', 'session_delete'],
       rpcMap: {
+        999: 'https://rpc.hyperliquid.xyz/evm',
         1: 'https://ethereum.publicnode.com',
         56: 'https://bsc-dataseed.binance.org',
-        999: 'https://rpc.hyperliquid.xyz/evm',
       },
       metadata: {
         name: 'Hype Token',
@@ -708,9 +715,9 @@ const persistWallet = async (addr) => {
         console.warn('WalletConnect failed:', e);
         const msg = e?.message || '';
         if (msg.includes('Project ID') || msg.includes('WALLETCONNECT')) {
-          showToast('Project ID not found — deploy /api/config route');
+          showToast('WalletConnect Project ID missing. Set VITE_WALLETCONNECT_PROJECT_ID.');
         } else if (msg.includes('Failed to fetch') || msg.includes('Cannot find module') || msg.includes('@walletconnect')) {
-          showToast('Install: npm i @walletconnect/ethereum-provider');
+          showToast('WalletConnect package missing or network blocked. Install @walletconnect/ethereum-provider.');
         } else if (msg.includes('User rejected') || msg.includes('denied') || msg.includes('cancelled')) {
           showToast('Connection cancelled');
         } else {
