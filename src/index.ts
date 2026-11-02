@@ -443,7 +443,7 @@ async function checkTelegramTaskMembership(db: D1Database, env: Bindings, userId
   if (!task) return { error: 'Task not found', status: 404 };
   if (String(task.type).toLowerCase() !== 'telegram') return { error: 'Automatic verification is currently available only for public Telegram channels', status: 422 };
   if (!env.BOT_TOKEN) return { error: 'Telegram bot token is not configured', status: 503 };
-  const match = String(task.link || '').trim().match(/(?:https?:\\/\\/)?(?:www\\.)?t\\.me\\/([A-Za-z0-9_]{5,})|^@([A-Za-z0-9_]{5,})$/i);
+  const match = String(task.link || '').trim().match(/(?:https?:\/\/)?(?:www\.)?t\.me\/([A-Za-z0-9_]{5,})|^@([A-Za-z0-9_]{5,})$/i);
   const channel = match?.[1] ? `@${match[1]}` : match?.[2] ? `@${match[2]}` : '';
   if (!channel) return { error: 'Task link must be a public Telegram channel link or @username', status: 422 };
   const response = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/getChatMember?chat_id=${encodeURIComponent(channel)}&user_id=${userId}`);
