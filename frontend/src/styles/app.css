@@ -1809,46 +1809,53 @@ button.secondary {
 }
 .checkin-days {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 6px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
   margin-bottom: 14px;
+  width: 100%;
+  box-sizing: border-box;
 }
 .checkin-day {
-  background: rgba(0, 22, 12, 0.8);
-  border: 1px solid rgba(0, 255, 136, 0.2);
+  background: rgba(0, 22, 12, 0.85);
+  border: 1px solid rgba(0, 255, 136, 0.28);
   border-radius: 12px;
   padding: 10px 4px 8px;
   text-align: center;
-  min-height: 78px;
+  min-height: 82px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 3px;
+  overflow: visible;
 }
 .checkin-day.claimed {
-  border-color: rgba(0, 255, 136, 0.45);
-  background: rgba(0, 40, 22, 0.7);
+  border-color: rgba(0, 255, 136, 0.5);
+  background: rgba(0, 40, 22, 0.75);
 }
 .checkin-day.claimed .cd-icon { color: #00ff88; }
 .checkin-day.current {
-  border-color: #f0d878;
-  box-shadow: 0 0 16px rgba(240, 216, 120, 0.35);
-  background: rgba(40, 35, 8, 0.45);
+  border-color: #00ff88;
+  box-shadow: 0 0 16px rgba(0, 255, 136, 0.4);
+  background: rgba(0, 40, 22, 0.55);
 }
-.checkin-day.current .cd-icon { color: #f0d878; }
+.checkin-day.current .cd-icon { color: #00ff88; }
 .checkin-day.locked {
-  opacity: 0.45;
+  opacity: 0.5;
 }
 .cd-label {
-  font-size: 0.68rem;
+  font-size: 0.72rem !important;
   font-weight: 800;
-  color: #a0ffc0;
+  color: #a0ffc0 !important;
+  white-space: nowrap;
 }
 .cd-reward {
-  font-size: 0.68rem;
+  font-size: 0.62rem !important;
   font-weight: 800;
-  color: #00ff88;
+  color: #00ff88 !important;
+  white-space: nowrap;
+  overflow: visible;
+  max-width: 100%;
 }
 .streak-bonus-card {
   display: flex;
@@ -3115,4 +3122,127 @@ body {
   border: none !important;
   width: 0 !important;
   height: 0 !important;
+}
+
+/* ========== FINAL OVERRIDES: Green Hype theme + new platform + no yellow ========== */
+
+/* Full Hype green neon city background (user provided image) */
+.app {
+  background:
+    linear-gradient(180deg, rgba(2, 10, 6, 0.35) 0%, rgba(1, 5, 3, 0.55) 50%, rgba(0, 0, 0, 0.7) 100%),
+    url('/hype-bg.png') center top / cover no-repeat fixed !important;
+  background-color: #020a06 !important;
+}
+
+/* Remove gold side pillars */
+.app::before,
+.app::after {
+  display: none !important;
+  content: none !important;
+  width: 0 !important;
+  opacity: 0 !important;
+}
+
+/* Hide ALL yellow / gold 3-tier platform, rings, crown completely */
+.atf-platform,
+.atf-platform-glow,
+.atf-platform-top,
+.atf-platform-mid,
+.atf-platform-bottom,
+.atf-platform-shine,
+.atf-pedestal,
+.atf-pedestal-glow,
+.atf-pedestal-base,
+.atf-pedestal-ring,
+.atf-coin-ring,
+.atf-coin-crown,
+.atf-coin-crown-img,
+.logo-platform,
+.logo-platform-base,
+.logo-platform-beam,
+.logo-platform-glow,
+.logo-ring,
+.ring-inner,
+.ring-mid,
+.ring-outer {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  pointer-events: none !important;
+}
+
+/* New cyan high-tech platform image under coin */
+.hype-platform-img {
+  position: absolute !important;
+  left: 50% !important;
+  top: 58% !important;
+  transform: translateX(-50%) !important;
+  width: 240px !important;
+  max-width: 85vw !important;
+  height: auto !important;
+  z-index: 2 !important;
+  pointer-events: none !important;
+  filter: drop-shadow(0 0 25px rgba(0, 255, 200, 0.55)) drop-shadow(0 10px 20px rgba(0,0,0,0.6));
+  display: block !important;
+}
+
+/* Coin sits cleanly above the new platform */
+.atf-coin-wrap {
+  margin-bottom: 0 !important;
+  position: relative !important;
+  z-index: 6 !important;
+}
+.hype-logo {
+  min-height: 300px !important;
+  padding-bottom: 20px !important;
+}
+.atf-stage {
+  min-height: 340px !important;
+  background: transparent !important;
+}
+
+/* Soft green glow under coin (no yellow) */
+.atf-coin-glow {
+  background: radial-gradient(circle, rgba(0, 255, 180, 0.45) 0%, rgba(0, 180, 100, 0.15) 45%, transparent 70%) !important;
+  filter: blur(16px) !important;
+}
+
+/* Energy bar back to green (no gold) */
+.energy-pct-badge {
+  background: linear-gradient(135deg, #00cc6a, #00ff88) !important;
+  color: #002211 !important;
+  box-shadow: 0 0 12px rgba(0, 255, 136, 0.5) !important;
+}
+.energy-pipe-fill {
+  background: linear-gradient(90deg, #00aa55, #00ff88) !important;
+}
+
+/* Keep check-in fully green and readable */
+.next-reward-pill {
+  background: rgba(0, 255, 136, 0.12) !important;
+  border-color: rgba(0, 255, 136, 0.4) !important;
+  color: #00ff88 !important;
+}
+.claim-btn.checkin-now {
+  background: linear-gradient(135deg, #00cc6a, #00ff88) !important;
+  color: #002211 !important;
+  border: none !important;
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.4) !important;
+}
+.claim-btn.checkin-now.claim-disabled,
+.claim-btn.checkin-now:disabled {
+  background: rgba(0, 40, 22, 0.7) !important;
+  color: rgba(160, 255, 192, 0.6) !important;
+  box-shadow: none !important;
+}
+
+/* Ensure no yellow rectangles behind any cards */
+.checkin-card,
+.page .card,
+.task-card {
+  background: rgba(0, 25, 15, 0.92) !important;
+  border: 1px solid rgba(0, 255, 136, 0.25) !important;
+  color: #e0ffe8 !important;
 }
