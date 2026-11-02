@@ -432,15 +432,30 @@ app.get('/api/tasks', async (c) => {
 
 app.post('/api/tasks/complete', async (c) => {
   try {
-    const body = await c.req.json();
+    const body = await c.req.json().catch(() => ({}));
+    const taskId = Number(body.task_id);
+    if (!Number.isSafeInteger(taskId) || taskId <= 0) return c.json({ error: 'Invalid task id' }, 400);
     const u = await ensureUser(c.env.DB, c.env, c.get('tgUser'), null);
-    const task = await c.env.DB.prepare('SELECT * FROM tasks WHERE id = ? AND is_active = 1').bind(body.task_id).first<any>();
+    const task = await c.env.DB.prepare('SELECT * FROM tasks WHERE id = ? AND is_active = 1').bind(taskId).first<any>();
     if (!task) return c.json({ error: 'Task not found' }, 404);
-    const claim = await c.env.DB.prepare('INSERT OR IGNORE INTO user_tasks (user_id, task_id) VALUES (?, ?)').bind(u.id, body.task_id).run();
-    if ((claim.meta?.changes ?? 0) === 0) return c.json({ error: 'Already completed' }, 409);
-    await c.env.DB.prepare('UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE id = ?').bind(task.reward, task.reward, u.id).run();
-    return c.json({ success: true, reward: task.reward });
-  } catch (e: any) { return c.json({ error: e.message }, 400); }
+    if (String(task.type).toLowerCase() !== 'telegram') return c.json({ error: 'Automatic verification is currently available only for public Telegram channels' }, 422);
+    if (!c.env.BOT_TOKEN) return c.json({ error: 'Telegram bot token is not configured' }, 503);
+    const match = String(task.link || '').trim().match(/(?:https?:\\/\\/)?(?:www\\.)?t\\.me\\/([A-Za-z0-9_]{5,})|^@([A-Za-z0-9_]{5,})$/i);
+    const channel = match?.[1] ? `@${match[1]}` : match?.[2] ? `@${match[2]}` : '';
+    if (!channel) return c.json({ error: 'Task link must be a public Telegram channel link or @username' }, 422);
+    const verifyResponse = await fetch(`https://api.telegram.org/bot${c.env.BOT_TOKEN}/getChatMember?chat_id=${encodeURIComponent(channel)}&user_id=${u.id}`);
+    const verification: any = await verifyResponse.json();
+    const member = verification?.result;
+    const isMember = verification?.ok && member && (['creator', 'administrator', 'member'].includes(member.status) || (member.status === 'restricted' && member.is_member === true));
+    if (!isMember) return c.json({ error: 'Join the Telegram channel first. The bot must be an admin in that channel.' }, 403);
+    const result = await c.env.DB.batch([
+      c.env.DB.prepare('INSERT OR IGNORE INTO user_tasks (user_id, task_id) VALUES (?, ?)').bind(u.id, taskId),
+      c.env.DB.prepare('UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE id = ? AND changes() > 0').bind(Number(task.reward), Number(task.reward), u.id),
+    ]);
+    if ((result[0]?.meta?.changes ?? 0) === 0) return c.json({ error: 'Already completed' }, 409);
+    if ((result[1]?.meta?.changes ?? 0) === 0) return c.json({ error: 'Reward could not be credited' }, 500);
+    return c.json({ success: true, reward: Number(task.reward) });
+  } catch (e: any) { return c.json({ error: e?.message || 'Task verification failed' }, 400); }
 });
 
 app.get('/api/leaderboard', async (c) => {
@@ -614,13 +629,17 @@ app.delete('/api/admin/users/:id', async (c) => {
 app.post('/api/admin/broadcast', async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const message = String(body.message || '').trim();
-  if (!message || message.length > 4096) return c.json({ error: 'Message must be 1–4096 characters' }, 400);
+  const photo = String(body.photo || '').trim();
+  if ((!message && !photo) || message.length > 1024 && photo || message.length > 4096) return c.json({ error: 'Message must be 1–4096 characters, or a photo with a caption up to 1024 characters' }, 400);
+  if (photo && !/^https:\\/\\//i.test(photo)) return c.json({ error: 'Photo URL must use HTTPS' }, 400);
   if (!c.env.BOT_TOKEN) return c.json({ error: 'Telegram bot token is not configured' }, 503);
   const { results } = await c.env.DB.prepare('SELECT id FROM users ORDER BY id').all();
   let sent = 0, failed = 0;
   for (const row of (results || []) as any[]) {
     try {
-      const response = await fetch(`https://api.telegram.org/bot${c.env.BOT_TOKEN}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: row.id, text: message, disable_web_page_preview: true }) });
+      const method = photo ? 'sendPhoto' : 'sendMessage';
+      const payload = photo ? { chat_id: row.id, photo, caption: message || undefined } : { chat_id: row.id, text: message, disable_web_page_preview: true };
+      const response = await fetch(`https://api.telegram.org/bot${c.env.BOT_TOKEN}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const result: any = await response.json();
       if (response.ok && result?.ok) sent++; else failed++;
     } catch { failed++; }
