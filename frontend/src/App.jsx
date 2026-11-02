@@ -1218,10 +1218,10 @@ showToast(data.error || 'Already checked in today');
   const refreshTaskMembership = async () => {
     const results = await Promise.all(tasks.map(async (task) => {
       const data = await api('/api/tasks/verify', { method: 'POST', body: JSON.stringify({ task_id: task.id }) });
-      return [task.id, data.verified ? (data.claimed ? 'claimed' : 'verified') : 'not_member'];
+      return [task.id, data.verified && data.claimed ? 'claimed' : 'not_member'];
     }));
     setTaskVerification((s) => ({ ...s, ...Object.fromEntries(results) }));
-    setPendingTasks(results.filter(([, status]) => status === 'verified').map(([id]) => id));
+    setPendingTasks([]);
   };
 
   useEffect(() => {
