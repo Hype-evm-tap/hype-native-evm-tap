@@ -3474,3 +3474,67 @@ body {
 .hype-platform-img {
   top: 52% !important;
 }
+
+
+/* Task card actions: reserve their own column so Claim never overlaps text. */
+.task-card {
+  overflow: hidden !important;
+}
+.task-card-content {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+.task-info {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  overflow-wrap: anywhere !important;
+}
+.task-title {
+  font-weight: 700 !important;
+  line-height: 1.35 !important;
+  overflow-wrap: anywhere !important;
+}
+.task-reward {
+  margin-top: 6px !important;
+  font-size: 0.8rem !important;
+  line-height: 1.3 !important;
+  color: #f0d878 !important;
+}
+.task-action {
+  flex: 0 0 auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: 84px !important;
+  max-width: 112px !important;
+}
+.task-action-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: 84px !important;
+  min-height: 40px !important;
+  padding: 8px 12px !important;
+  line-height: 1.2 !important;
+  white-space: nowrap !important;
+  position: relative !important;
+  flex-shrink: 0 !important;
+}
+.task-done-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  white-space: nowrap !important;
+  line-height: 1.2 !important;
+}
+.task-verify-note {
+  margin-top: 8px !important;
+  font-size: 0.75rem !important;
+  line-height: 1.35 !important;
+  color: #9fe8c0 !important;
+}

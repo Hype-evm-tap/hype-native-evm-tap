@@ -35,9 +35,10 @@ type TgUser = {
   username?: string;
   first_name?: string;
   last_name?: string;
+  start_param?: string;
 };
 
-const app = new Hono<{ Bindings: Bindings }>();
+const app = new Hono<{ Bindings: Bindings; Variables: { tgUser: TgUser } }>();
 app.use('*', cors({
   origin: '*',
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -70,6 +71,15 @@ async function getSetting(db: D1Database, key: string): Promise<string> {
   return DEFAULTS[key] ?? '';
 }
 
+async function getConfiguredSetting(db: D1Database, key: string, envValue?: string): Promise<string> {
+  try {
+    const row = await db.prepare('SELECT value FROM settings WHERE key = ?').bind(key).first<{ value: string }>();
+    if (row?.value != null && row.value !== '') return String(row.value);
+  } catch {}
+  if (envValue != null && envValue !== '') return String(envValue);
+  return DEFAULTS[key] ?? '';
+}
+
 async function setSetting(db: D1Database, key: string, value: string) {
   await db.prepare(
     `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, strftime('%s','now'))
@@ -86,21 +96,16 @@ async function getConfig(db: D1Database, env?: Bindings) {
     dayRewards = [0.0000089, 0.000002, 0.000006, 0.000007, 0.0000079, 0.0000089, 0.0004];
   }
   const cfg: any = {
-    tap_reward: parseFloat(await getSetting(db, 'tap_reward')),
-    referral_reward: parseFloat(await getSetting(db, 'referral_reward')),
-    min_withdraw: parseFloat(await getSetting(db, 'min_withdraw')),
-    energy_max: parseFloat(await getSetting(db, 'energy_max')),
-    energy_cooldown: parseFloat(await getSetting(db, 'energy_cooldown')),
+    tap_reward: parseFloat(await getConfiguredSetting(db, 'tap_reward', env?.TAP_REWARD)),
+    referral_reward: parseFloat(await getConfiguredSetting(db, 'referral_reward', env?.REFERRAL_REWARD)),
+    min_withdraw: parseFloat(await getConfiguredSetting(db, 'min_withdraw', env?.MIN_WITHDRAW)),
+    energy_max: parseFloat(await getConfiguredSetting(db, 'energy_max', env?.ENERGY_MAX)),
+    energy_cooldown: parseFloat(await getConfiguredSetting(db, 'energy_cooldown', env?.ENERGY_COOLDOWN_SEC)),
     daily_checkin_reward: parseFloat(await getSetting(db, 'daily_checkin_reward')),
     streak_bonus: parseFloat(await getSetting(db, 'streak_bonus')) || 0,
     checkin_day_rewards: dayRewards,
     bot_username: env?.BOT_USERNAME || '',
   };
-  if (env?.TAP_REWARD) cfg.tap_reward = parseFloat(env.TAP_REWARD);
-  if (env?.REFERRAL_REWARD) cfg.referral_reward = parseFloat(env.REFERRAL_REWARD);
-  if (env?.MIN_WITHDRAW) cfg.min_withdraw = parseFloat(env.MIN_WITHDRAW);
-  if (env?.ENERGY_MAX) cfg.energy_max = parseFloat(env.ENERGY_MAX);
-  if (env?.ENERGY_COOLDOWN_SEC) cfg.energy_cooldown = parseFloat(env.ENERGY_COOLDOWN_SEC);
   return cfg;
 }
 
@@ -117,6 +122,34 @@ function isStreakBroken(lastCheckinAt: number) {
   return nowSec() - toUnixSeconds(lastCheckinAt) > 86400 * 2;
 }
 
+
+async function verifyTelegramInitData(raw: string, botToken: string): Promise<TgUser | null> {
+  if (!raw || !botToken) return null;
+  try {
+    const params = new URLSearchParams(raw);
+    const hash = params.get('hash');
+    if (!hash || !/^[a-f0-9]{64}$/i.test(hash)) return null;
+    params.delete('hash');
+    const authDate = Number(params.get('auth_date'));
+    if (!Number.isFinite(authDate) || authDate > nowSec() + 60 || nowSec() - authDate > 86400) return null;
+    const dataCheckString = [...params.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}=${v}`).join('\n');
+    const enc = new TextEncoder();
+    const baseKey = await crypto.subtle.importKey('raw', enc.encode(botToken), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const secret = await crypto.subtle.sign('HMAC', baseKey, enc.encode('WebAppData'));
+    const hmacKey = await crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const digest = new Uint8Array(await crypto.subtle.sign('HMAC', hmacKey, enc.encode(dataCheckString)));
+    const actual = [...digest].map((b) => b.toString(16).padStart(2, '0')).join('');
+    let diff = actual.length ^ hash.length;
+    for (let i = 0; i < Math.min(actual.length, hash.length); i++) diff |= actual.charCodeAt(i) ^ hash.toLowerCase().charCodeAt(i);
+    if (diff !== 0) return null;
+    const userRaw = params.get('user');
+    if (!userRaw) return null;
+    const user = JSON.parse(userRaw);
+    if (!Number.isSafeInteger(Number(user?.id)) || Number(user.id) <= 0) return null;
+    return { id: Number(user.id), username: user.username || '', first_name: user.first_name || '', last_name: user.last_name || '', start_param: params.get('start_param') || '' };
+  } catch { return null; }
+}
+
 function adminSet(env: Bindings) {
   const raw = [env.ADMIN_ID || '', env.ADMIN_IDS || ''].join(',');
   return new Set(raw.split(',').map((s) => s.trim()).filter(Boolean).map(Number));
@@ -125,7 +158,7 @@ function adminSet(env: Bindings) {
 async function ensureUser(db: D1Database, env: Bindings, tgUser: TgUser, startParam?: string | null) {
   if (!tgUser?.id) throw new Error('No user');
   let u = await db.prepare('SELECT * FROM users WHERE id = ?').bind(tgUser.id).first<any>();
-  const energyMax = parseFloat(await getSetting(db, 'energy_max')) || 1000;
+  const energyMax = parseFloat(await getConfiguredSetting(db, 'energy_max', env.ENERGY_MAX)) || 1000;
   const shouldAdmin = adminSet(env).has(Number(tgUser.id)) ? 1 : 0;
 
   if (!u) {
@@ -135,11 +168,13 @@ async function ensureUser(db: D1Database, env: Bindings, tgUser: TgUser, startPa
     ).bind(tgUser.id, tgUser.username || '', tgUser.first_name || '', tgUser.last_name || '', energyMax, shouldAdmin).run();
 
     if (startParam) {
-      const refId = parseInt(String(startParam).replace(/\D/g, ''), 10);
+      const refText = String(startParam).trim();
+      const refMatch = refText.match(/^(?:ref_)?([1-9]\d{0,19})$/i);
+      const refId = refMatch ? Number(refMatch[1]) : 0;
       if (refId && refId !== tgUser.id) {
         const ref = await db.prepare('SELECT id FROM users WHERE id = ?').bind(refId).first();
         if (ref) {
-          const reward = parseFloat(await getSetting(db, 'referral_reward')) || parseFloat(env.REFERRAL_REWARD || '') || 0;
+          const reward = parseFloat(await getConfiguredSetting(db, 'referral_reward', env.REFERRAL_REWARD)) || 0;
           const ins = await db.prepare('INSERT OR IGNORE INTO referrals (referrer_id, referred_id, reward) VALUES (?, ?, ?)').bind(refId, tgUser.id, reward).run();
           if ((ins?.meta?.changes ?? 0) > 0) {
             await db.prepare('UPDATE users SET referred_by = ? WHERE id = ? AND (referred_by IS NULL OR referred_by = 0)').bind(refId, tgUser.id).run();
@@ -151,8 +186,8 @@ async function ensureUser(db: D1Database, env: Bindings, tgUser: TgUser, startPa
     u = await db.prepare('SELECT * FROM users WHERE id = ?').bind(tgUser.id).first<any>();
   } else {
     await db.prepare(
-      `UPDATE users SET username = ?, first_name = ?, last_name = ?, last_active = strftime('%s','now'), is_admin = ? WHERE id = ?`
-    ).bind(tgUser.username || u.username, tgUser.first_name || u.first_name, tgUser.last_name || u.last_name, shouldAdmin || Number(u.is_admin) || 0, tgUser.id).run();
+      `UPDATE users SET username = ?, first_name = ?, last_name = ?, last_active = strftime('%s','now') WHERE id = ?`
+    ).bind(tgUser.username || u.username, tgUser.first_name || u.first_name, tgUser.last_name || u.last_name, tgUser.id).run();
     u = await db.prepare('SELECT * FROM users WHERE id = ?').bind(tgUser.id).first<any>();
   }
 
@@ -218,6 +253,21 @@ async function listReferrals(db: D1Database, userId: number) {
   return { referrals: list, count: list.length };
 }
 
+
+app.use('/api/*', async (c, next) => {
+  const path = new URL(c.req.url).pathname;
+  if (['/api/health', '/api/config', '/api/price'].includes(path)) return next();
+  const identity = await verifyTelegramInitData(c.req.header('X-Telegram-Init-Data') || '', c.env.BOT_TOKEN || '');
+  if (!identity) return c.json({ error: 'Unauthorized: valid Telegram session required' }, 401);
+  c.set('tgUser', identity);
+  if (path.startsWith('/api/admin/')) {
+    const configuredAdmin = adminSet(c.env).has(identity.id);
+    const dbUser = configuredAdmin ? null : await c.env.DB.prepare('SELECT is_admin FROM users WHERE id = ?').bind(identity.id).first<any>();
+    if (!configuredAdmin && !Number(dbUser?.is_admin)) return c.json({ error: 'Forbidden: admin only' }, 403);
+  }
+  return next();
+});
+
 // ──── Routes ────
 
 app.get('/api/health', (c) => c.json({ ok: true, time: new Date().toISOString() }));
@@ -243,9 +293,9 @@ app.get('/api/price', async (c) => {
 app.post('/api/user', async (c) => {
   try {
     const body = await c.req.json().catch(() => ({}));
-    const tgUser = body.user as TgUser;
+    const tgUser = c.get('tgUser');
     if (!tgUser?.id) return c.json({ error: 'Unauthorized' }, 401);
-    const startParam = body.start_param || body.ref || body.referrer_id || null;
+    const startParam = tgUser.start_param || null;
     const u = await ensureUser(c.env.DB, c.env, tgUser, startParam);
     const cfg = await getConfig(c.env.DB, c.env);
     let price = 0;
@@ -266,8 +316,7 @@ app.post('/api/user', async (c) => {
 app.post('/api/wallet', async (c) => {
   try {
     const body = await c.req.json().catch(() => ({}));
-    const tgUser = body.user as TgUser;
-    if (!tgUser?.id) return c.json({ error: 'User required' }, 400);
+    const tgUser = c.get('tgUser');
     await ensureUser(c.env.DB, c.env, tgUser, null);
     const addr = String(body.wallet_address || '').trim();
     if (addr && !/^0x[a-fA-F0-9]{40}$/.test(addr)) return c.json({ error: 'Invalid EVM address' }, 400);
@@ -280,9 +329,7 @@ app.post('/api/wallet', async (c) => {
 
 app.post('/api/checkin', async (c) => {
   try {
-    const body = await c.req.json().catch(() => ({}));
-    const tgUser = body.user as TgUser;
-    if (!tgUser?.id) return c.json({ error: 'User required' }, 400);
+    const tgUser = c.get('tgUser');
     let u = await ensureUser(c.env.DB, c.env, tgUser, null);
     const last = toUnixSeconds(u.last_checkin_at);
     const { can, wait } = computeCanCheckin(last);
@@ -322,8 +369,7 @@ app.post('/api/checkin', async (c) => {
 app.post('/api/tap', async (c) => {
   try {
     const body = await c.req.json().catch(() => ({}));
-    const tgUser = body.user as TgUser;
-    if (!tgUser?.id) return c.json({ error: 'User required' }, 400);
+    const tgUser = c.get('tgUser');
     let u = await ensureUser(c.env.DB, c.env, tgUser, null);
     const cfg = await getConfig(c.env.DB, c.env);
     const energyMax = cfg.energy_max || 1000;
@@ -343,7 +389,9 @@ app.post('/api/tap', async (c) => {
       return c.json({ error: 'Energy depleted', energy: 0, energy_reset_at: resetAt, balance: Number(u.balance) || 0, wait_seconds: Math.max(0, resetAt - t) }, 429);
     }
 
-    const taps = Math.max(1, Math.min(50, parseInt(body.taps || 1, 10)));
+    const requestedTaps = Number(body.taps ?? 1);
+    if (!Number.isSafeInteger(requestedTaps) || requestedTaps < 1) return c.json({ error: 'Invalid tap count' }, 400);
+    const taps = Math.min(50, requestedTaps);
     const actualTaps = Math.min(taps, energy);
     const earned = actualTaps * rewardPer;
 
@@ -381,23 +429,63 @@ app.post('/api/tap', async (c) => {
 
 app.get('/api/tasks', async (c) => {
   try {
-    const { results } = await c.env.DB.prepare('SELECT id, title, type, link, reward FROM tasks WHERE is_active = 1 ORDER BY id DESC').all();
-    return c.json({ tasks: results || [], completed: [] });
+    const authUser = c.get('tgUser');
+    const [{ results: tasks }, { results: completedRows }] = await Promise.all([
+      c.env.DB.prepare('SELECT id, title, type, link, reward FROM tasks WHERE is_active = 1 ORDER BY id DESC').all(),
+      c.env.DB.prepare('SELECT task_id FROM user_tasks WHERE user_id = ?').bind(authUser.id).all(),
+    ]);
+    return c.json({ tasks: tasks || [], completed: (completedRows || []).map((row: any) => row.task_id) });
   } catch { return c.json({ tasks: [], completed: [] }); }
+});
+
+async function checkTelegramTaskMembership(db: D1Database, env: Bindings, userId: number, taskId: number) {
+  const task = await db.prepare('SELECT * FROM tasks WHERE id = ? AND is_active = 1').bind(taskId).first<any>();
+  if (!task) return { error: 'Task not found', status: 404 };
+  if (String(task.type).toLowerCase() !== 'telegram') return { error: 'Automatic verification is currently available only for public Telegram channels', status: 422 };
+  if (!env.BOT_TOKEN) return { error: 'Telegram bot token is not configured', status: 503 };
+  const match = String(task.link || '').trim().match(/(?:https?:\/\/)?(?:www\.)?t\.me\/([A-Za-z0-9_]{5,})|^@([A-Za-z0-9_]{5,})$/i);
+  const channel = match?.[1] ? `@${match[1]}` : match?.[2] ? `@${match[2]}` : '';
+  if (!channel) return { error: 'Task link must be a public Telegram channel link or @username', status: 422 };
+  const response = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/getChatMember?chat_id=${encodeURIComponent(channel)}&user_id=${userId}`);
+  const result: any = await response.json();
+  if (!result?.ok) return { error: 'Could not verify channel membership. The bot must be an admin in that channel.', status: 503 };
+  const member = result.result;
+  const isMember = member && (['creator', 'administrator', 'member'].includes(member.status) || (member.status === 'restricted' && member.is_member === true));
+  return { task, isMember: !!isMember };
+}
+
+app.post('/api/tasks/verify', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const taskId = Number(body.task_id);
+    if (!Number.isSafeInteger(taskId) || taskId <= 0) return c.json({ error: 'Invalid task id' }, 400);
+    const userId = c.get('tgUser').id;
+    const check: any = await checkTelegramTaskMembership(c.env.DB, c.env, userId, taskId);
+    if (check.error) return c.json({ error: check.error }, check.status);
+    const claimed = await c.env.DB.prepare('SELECT 1 FROM user_tasks WHERE user_id = ? AND task_id = ?').bind(userId, taskId).first();
+    return c.json({ verified: check.isMember, claimed: !!claimed, message: check.isMember ? 'Membership verified' : 'Join the channel first' });
+  } catch (e: any) { return c.json({ error: e?.message || 'Task verification failed' }, 400); }
 });
 
 app.post('/api/tasks/complete', async (c) => {
   try {
-    const body = await c.req.json();
-    const u = await ensureUser(c.env.DB, c.env, body.user, null);
-    const task = await c.env.DB.prepare('SELECT * FROM tasks WHERE id = ? AND is_active = 1').bind(body.task_id).first<any>();
-    if (!task) return c.json({ error: 'Task not found' }, 404);
-    const done = await c.env.DB.prepare('SELECT 1 FROM user_tasks WHERE user_id = ? AND task_id = ?').bind(u.id, body.task_id).first();
-    if (done) return c.json({ error: 'Already completed' }, 400);
-    await c.env.DB.prepare('INSERT INTO user_tasks (user_id, task_id) VALUES (?, ?)').bind(u.id, body.task_id).run();
-    await c.env.DB.prepare('UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE id = ?').bind(task.reward, task.reward, u.id).run();
-    return c.json({ success: true, reward: task.reward });
-  } catch (e: any) { return c.json({ error: e.message }, 400); }
+    const body = await c.req.json().catch(() => ({}));
+    const taskId = Number(body.task_id);
+    if (!Number.isSafeInteger(taskId) || taskId <= 0) return c.json({ error: 'Invalid task id' }, 400);
+    const u = await ensureUser(c.env.DB, c.env, c.get('tgUser'), null);
+    const check: any = await checkTelegramTaskMembership(c.env.DB, c.env, u.id, taskId);
+    if (check.error) return c.json({ error: check.error }, check.status);
+    if (!check.isMember) return c.json({ error: 'Join the Telegram channel first. The bot must be an admin in that channel.' }, 403);
+    const taskReward = Number(check.task.reward);
+    if (!Number.isFinite(taskReward) || taskReward < 0 || taskReward > 1000000) return c.json({ error: 'Task reward is invalid; contact an admin' }, 422);
+    const result = await c.env.DB.batch([
+      c.env.DB.prepare('INSERT OR IGNORE INTO user_tasks (user_id, task_id) VALUES (?, ?)').bind(u.id, taskId),
+      c.env.DB.prepare('UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE id = ? AND changes() > 0').bind(taskReward, taskReward, u.id),
+    ]);
+    if ((result[0]?.meta?.changes ?? 0) === 0) return c.json({ success: true, already_claimed: true, reward: 0 });
+    if ((result[1]?.meta?.changes ?? 0) === 0) return c.json({ error: 'Reward could not be credited' }, 500);
+    return c.json({ success: true, reward: taskReward });
+  } catch (e: any) { return c.json({ error: e?.message || 'Task claim failed' }, 400); }
 });
 
 app.get('/api/leaderboard', async (c) => {
@@ -409,48 +497,47 @@ app.get('/api/leaderboard', async (c) => {
 
 // FIX: was hard-coded []
 app.get('/api/referrals', async (c) => {
-  const qid = parseInt(c.req.query('user_id') || '0', 10);
-  if (!qid) return c.json({ referrals: [], count: 0 });
-  return c.json(await listReferrals(c.env.DB, qid));
+  const authUser = c.get('tgUser');
+  return c.json(await listReferrals(c.env.DB, authUser.id));
 });
 
 app.post('/api/referrals', async (c) => {
   try {
     const body = await c.req.json().catch(() => ({}));
-    if (!body.user?.id) return c.json({ error: 'User required' }, 400);
-    await ensureUser(c.env.DB, c.env, body.user, null);
-    return c.json(await listReferrals(c.env.DB, body.user.id));
+    const authUser = c.get('tgUser');
+    await ensureUser(c.env.DB, c.env, authUser, null);
+    return c.json(await listReferrals(c.env.DB, authUser.id));
   } catch (e: any) { return c.json({ error: e.message }, 400); }
 });
 
 app.post('/api/withdraw', async (c) => {
   try {
-    const body = await c.req.json();
-    const u = await ensureUser(c.env.DB, c.env, body.user, null);
-    const amount = parseFloat(body.amount);
+    const body = await c.req.json().catch(() => ({}));
+    const u = await ensureUser(c.env.DB, c.env, c.get('tgUser'), null);
+    const amount = Number(body.amount);
     const wallet = String(body.wallet_address || u.wallet_address || '').trim();
-    const min = parseFloat(await getSetting(c.env.DB, 'min_withdraw')) || 2;
+    const min = parseFloat(await getConfiguredSetting(c.env.DB, 'min_withdraw', c.env.MIN_WITHDRAW)) || 2;
     if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) return c.json({ error: 'Enter a valid HyperEVM wallet address' }, 400);
-    if (!amount || amount < min) return c.json({ error: `Min ${min} HYPE` }, 400);
-    const debit = await c.env.DB.prepare('UPDATE users SET balance = balance - ?, wallet_address = ? WHERE id = ? AND balance >= ?').bind(amount, wallet, u.id, amount).run();
-    if ((debit.meta?.changes ?? 0) === 0) return c.json({ error: 'Insufficient balance' }, 400);
-    await c.env.DB.prepare("INSERT INTO withdrawals (user_id, amount, wallet_address, status) VALUES (?, ?, ?, 'pending')").bind(u.id, amount, wallet).run();
+    if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(min) || amount < min) return c.json({ error: `Min ${min} HYPE` }, 400);
+    const result = await c.env.DB.batch([
+      c.env.DB.prepare('UPDATE users SET balance = balance - ?, wallet_address = ? WHERE id = ? AND balance >= ?').bind(amount, wallet, u.id, amount),
+      c.env.DB.prepare("INSERT INTO withdrawals (user_id, amount, wallet_address, status) SELECT ?, ?, ?, 'pending' WHERE changes() > 0").bind(u.id, amount, wallet),
+    ]);
+    if ((result[0]?.meta?.changes ?? 0) === 0 || (result[1]?.meta?.changes ?? 0) === 0) return c.json({ error: 'Insufficient balance or withdrawal could not be created' }, 400);
     const updated = await c.env.DB.prepare('SELECT balance FROM users WHERE id = ?').bind(u.id).first<any>();
     return c.json({ success: true, balance: Number(updated?.balance) || 0, message: 'Withdrawal request submitted' });
   } catch (e: any) { return c.json({ error: e.message }, 400); }
 });
 
 app.get('/api/withdrawals', async (c) => {
-  const qid = parseInt(c.req.query('user_id') || '0', 10);
-  if (!qid) return c.json({ withdrawals: [] });
-  const { results } = await c.env.DB.prepare('SELECT * FROM withdrawals WHERE user_id = ? ORDER BY id DESC LIMIT 50').bind(qid).all();
+  const authUser = c.get('tgUser');
+  const { results } = await c.env.DB.prepare('SELECT * FROM withdrawals WHERE user_id = ? ORDER BY id DESC LIMIT 50').bind(authUser.id).all();
   return c.json({ withdrawals: results || [] });
 });
 
 app.post('/api/withdrawals', async (c) => {
   try {
-    const body = await c.req.json().catch(() => ({}));
-    const u = await ensureUser(c.env.DB, c.env, body.user, null);
+    const u = await ensureUser(c.env.DB, c.env, c.get('tgUser'), null);
     const { results } = await c.env.DB.prepare('SELECT * FROM withdrawals WHERE user_id = ? ORDER BY id DESC LIMIT 50').bind(u.id).all();
     return c.json({ withdrawals: results || [] });
   } catch { return c.json({ withdrawals: [] }); }
@@ -467,6 +554,7 @@ app.get('/api/admin/stats', async (c) => {
 
 app.get('/api/admin/withdrawals', async (c) => {
   const status = c.req.query('status') || 'pending';
+  if (!['pending', 'processing', 'approved', 'rejected'].includes(status)) return c.json({ error: 'Invalid status' }, 400);
   const { results } = await c.env.DB.prepare(
     `SELECT w.*, u.username, u.first_name FROM withdrawals w LEFT JOIN users u ON u.id = w.user_id WHERE w.status = ? ORDER BY w.id DESC LIMIT 100`
   ).bind(status).all();
@@ -475,50 +563,68 @@ app.get('/api/admin/withdrawals', async (c) => {
 
 app.post('/api/admin/withdrawals/:id', async (c) => {
   const body = await c.req.json().catch(() => ({}));
-  const action = body.action;
-  const id = c.req.param('id');
-  const statusMap: any = { approve: 'approved', reject: 'rejected', processing: 'processing' };
-  const status = statusMap[action] || 'rejected';
-  if (status === 'rejected') {
-    const w = await c.env.DB.prepare('SELECT * FROM withdrawals WHERE id = ?').bind(id).first<any>();
-    if (w && (w.status === 'pending' || w.status === 'processing')) {
-      await c.env.DB.prepare('UPDATE users SET balance = balance + ? WHERE id = ?').bind(w.amount, w.user_id).run();
-    }
-  }
-  await c.env.DB.prepare("UPDATE withdrawals SET status = ?, processed_at = strftime('%s','now') WHERE id = ?").bind(status, id).run();
-  return c.json({ success: true });
+  const statusMap: Record<string, string> = { approve: 'approved', reject: 'rejected', processing: 'processing' };
+  const status = statusMap[body.action];
+  if (!status) return c.json({ error: 'Invalid action' }, 400);
+  const id = Number(c.req.param('id'));
+  if (!Number.isSafeInteger(id) || id <= 0) return c.json({ error: 'Invalid withdrawal id' }, 400);
+  const statements = [
+    c.env.DB.prepare("UPDATE withdrawals SET status = ?, processed_at = strftime('%s','now') WHERE id = ? AND status IN ('pending','processing')").bind(status, id),
+    c.env.DB.prepare("UPDATE users SET balance = balance + (SELECT amount FROM withdrawals WHERE id = ?) WHERE id = (SELECT user_id FROM withdrawals WHERE id = ?) AND ? = 'rejected' AND changes() > 0").bind(id, id, status),
+  ];
+  const results = await c.env.DB.batch(statements);
+  if ((results[0]?.meta?.changes ?? 0) === 0) return c.json({ error: 'Withdrawal not found or already processed' }, 409);
+  return c.json({ success: true, status });
 });
-
 app.get('/api/admin/tasks', async (c) => {
   const { results } = await c.env.DB.prepare('SELECT * FROM tasks ORDER BY id DESC').all();
   return c.json({ tasks: results || [] });
 });
 app.post('/api/admin/tasks', async (c) => {
-  const b = await c.req.json();
-  const info = await c.env.DB.prepare('INSERT INTO tasks (title, type, link, reward, is_active) VALUES (?, ?, ?, ?, 1)').bind(b.title, b.type || 'telegram', b.link || '', parseFloat(b.reward) || 0).run();
+  const b = await c.req.json().catch(() => ({}));
+  const title = String(b.title || '').trim().slice(0, 120);
+  const type = String(b.type || 'telegram').trim().toLowerCase();
+  const link = String(b.link || '').trim().slice(0, 500);
+  const reward = Number(b.reward);
+  const telegramChannel = link.match(/^(?:https?:\/\/)?(?:www\.)?t\.me\/([A-Za-z0-9_]{5,})\/?$|^@([A-Za-z0-9_]{5,})$/i);
+  if (!title || !telegramChannel || type !== 'telegram' || !Number.isFinite(reward) || reward < 0 || reward > 1000000) return c.json({ error: 'Only public Telegram channel links (t.me/name or @name), with a valid title and reward, are supported' }, 400);
+  const info = await c.env.DB.prepare('INSERT INTO tasks (title, type, link, reward, is_active) VALUES (?, ?, ?, ?, 1)').bind(title, type, link, reward).run();
   return c.json({ success: true, id: info.meta.last_row_id });
 });
 app.delete('/api/admin/tasks/:id', async (c) => {
-  await c.env.DB.prepare('DELETE FROM user_tasks WHERE task_id = ?').bind(c.req.param('id')).run();
-  await c.env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(c.req.param('id')).run();
+  const id = Number(c.req.param('id'));
+  if (!Number.isSafeInteger(id) || id <= 0) return c.json({ error: 'Invalid task id' }, 400);
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM user_tasks WHERE task_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(id),
+  ]);
   return c.json({ success: true });
 });
 app.get('/api/admin/settings', async (c) => c.json({ settings: await getConfig(c.env.DB, c.env) }));
 app.post('/api/admin/settings', async (c) => {
-  const b = await c.req.json();
-  for (const k of ['tap_reward','referral_reward','min_withdraw','energy_max','energy_cooldown','daily_checkin_reward','streak_bonus'] as const) {
-    if (b[k] !== undefined && b[k] !== null && b[k] !== '') await setSetting(c.env.DB, k, String(b[k]));
+  const b = await c.req.json().catch(() => ({}));
+  const bounds: Record<string, [number, number]> = { tap_reward: [0, 1000000], referral_reward: [0, 1000000], min_withdraw: [0.00000001, 1000000], energy_max: [1, 1000000], energy_cooldown: [60, 604800], daily_checkin_reward: [0, 1000000], streak_bonus: [0, 1000000] };
+  const values: Array<[string, string]> = [];
+  for (const [k, [minValue, maxValue]] of Object.entries(bounds)) {
+    if (b[k] === undefined || b[k] === null || b[k] === '') continue;
+    const n = Number(b[k]);
+    if (!Number.isFinite(n) || n < minValue || n > maxValue) return c.json({ error: `Invalid ${k}` }, 400);
+    values.push([k, String(n)]);
   }
-  if (Array.isArray(b.checkin_day_rewards)) await setSetting(c.env.DB, 'checkin_day_rewards', JSON.stringify(b.checkin_day_rewards.map(Number)));
+  if (b.checkin_day_rewards !== undefined) {
+    if (!Array.isArray(b.checkin_day_rewards) || b.checkin_day_rewards.length !== 7 || b.checkin_day_rewards.some((v: any) => !Number.isFinite(Number(v)) || Number(v) < 0 || Number(v) > 1000000)) return c.json({ error: 'checkin_day_rewards must contain 7 valid non-negative numbers' }, 400);
+    values.push(['checkin_day_rewards', JSON.stringify(b.checkin_day_rewards.map(Number))]);
+  }
+  if (values.length) await c.env.DB.batch(values.map(([key, value]) => c.env.DB.prepare(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, strftime('%s','now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).bind(key, value)));
   return c.json({ success: true, settings: await getConfig(c.env.DB, c.env) });
 });
 app.get('/api/admin/leaderboard', async (c) => {
-  const limit = Math.min(100, parseInt(c.req.query('limit') || '50', 10));
+  const limit = Math.max(1, Math.min(100, Number.parseInt(c.req.query('limit') || '50', 10) || 50));
   const { results } = await c.env.DB.prepare('SELECT id, username, first_name, balance, total_earned, total_taps, invite_count, is_admin FROM users ORDER BY total_earned DESC LIMIT ?').bind(limit).all();
   return c.json({ leaderboard: results || [] });
 });
 app.get('/api/admin/referrals', async (c) => {
-  const limit = Math.min(100, parseInt(c.req.query('limit') || '50', 10));
+  const limit = Math.max(1, Math.min(100, Number.parseInt(c.req.query('limit') || '50', 10) || 50));
   const { results } = await c.env.DB.prepare(
     `SELECT r.*, u1.username as referrer_name, u2.username as referred_name FROM referrals r
      LEFT JOIN users u1 ON r.referrer_id = u1.id LEFT JOIN users u2 ON r.referred_id = u2.id
@@ -532,31 +638,57 @@ app.get('/api/admin/users/:id', async (c) => {
   return c.json({ user: publicUser(u, c.env) });
 });
 app.post('/api/admin/users/:id', async (c) => {
-  const b = await c.req.json();
-  const id = c.req.param('id');
+  const b = await c.req.json().catch(() => ({}));
+  const id = Number(c.req.param('id'));
+  if (!Number.isSafeInteger(id) || id <= 0) return c.json({ error: 'Invalid user id' }, 400);
+  const fields: Record<string, number> = {};
+  for (const k of ['balance', 'total_earned', 'total_taps', 'invite_count'] as const) {
+    if (b[k] === undefined || b[k] === null) continue;
+    const n = Number(b[k]);
+    if (!Number.isFinite(n) || n < 0 || n > 1e15 || (k !== 'balance' && k !== 'total_earned' && !Number.isSafeInteger(n))) return c.json({ error: `Invalid ${k}` }, 400);
+    fields[k] = n;
+  }
+  if (b.is_admin !== undefined && typeof b.is_admin !== 'boolean' && b.is_admin !== 0 && b.is_admin !== 1) return c.json({ error: 'Invalid is_admin' }, 400);
   await c.env.DB.prepare(
-    `UPDATE users SET balance = COALESCE(?, balance), total_earned = COALESCE(?, total_earned),
-     total_taps = COALESCE(?, total_taps), is_admin = COALESCE(?, is_admin), invite_count = COALESCE(?, invite_count) WHERE id = ?`
-  ).bind(
-    b.balance != null ? parseFloat(b.balance) : null,
-    b.total_earned != null ? parseFloat(b.total_earned) : null,
-    b.total_taps != null ? parseInt(b.total_taps, 10) : null,
-    b.is_admin != null ? (b.is_admin ? 1 : 0) : null,
-    b.invite_count != null ? parseInt(b.invite_count, 10) : null,
-    id
-  ).run();
+    `UPDATE users SET balance = COALESCE(?, balance), total_earned = COALESCE(?, total_earned), total_taps = COALESCE(?, total_taps), is_admin = COALESCE(?, is_admin), invite_count = COALESCE(?, invite_count) WHERE id = ?`
+  ).bind(fields.balance ?? null, fields.total_earned ?? null, fields.total_taps ?? null, b.is_admin == null ? null : (b.is_admin ? 1 : 0), id).run();
   const updated = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<any>();
+  if (!updated) return c.json({ error: 'User not found' }, 404);
   return c.json({ success: true, user: publicUser(updated, c.env) });
 });
 app.delete('/api/admin/users/:id', async (c) => {
-  const id = c.req.param('id');
-  await c.env.DB.prepare('DELETE FROM user_tasks WHERE user_id = ?').bind(id).run();
-  await c.env.DB.prepare('DELETE FROM referrals WHERE referrer_id = ? OR referred_id = ?').bind(id, id).run();
-  await c.env.DB.prepare('DELETE FROM withdrawals WHERE user_id = ?').bind(id).run();
-  await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id).run();
+  const id = Number(c.req.param('id'));
+  if (!Number.isSafeInteger(id) || id <= 0) return c.json({ error: 'Invalid user id' }, 400);
+  if (id === c.get('tgUser').id || adminSet(c.env).has(id)) return c.json({ error: 'Cannot delete your own account or a configured administrator' }, 403);
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM user_tasks WHERE user_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM referrals WHERE referrer_id = ? OR referred_id = ?').bind(id, id),
+    c.env.DB.prepare('DELETE FROM withdrawals WHERE user_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id),
+  ]);
   return c.json({ success: true });
 });
-app.post('/api/admin/broadcast', async (c) => c.json({ success: true, sent: 0, message: 'Wire Telegram bot token for broadcast' }));
+app.post('/api/admin/broadcast', async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const message = String(body.message || '').trim();
+  const photo = String(body.photo || '').trim();
+  if ((!message && !photo) || message.length > 1024 && photo || message.length > 4096) return c.json({ error: 'Message must be 1–4096 characters, or a photo with a caption up to 1024 characters' }, 400);
+  if (photo && !/^https:\/\//i.test(photo)) return c.json({ error: 'Photo URL must use HTTPS' }, 400);
+  if (!c.env.BOT_TOKEN) return c.json({ error: 'Telegram bot token is not configured' }, 503);
+  const { results } = await c.env.DB.prepare('SELECT id FROM users ORDER BY id').all();
+  let sent = 0, failed = 0;
+  for (const row of (results || []) as any[]) {
+    try {
+      const method = photo ? 'sendPhoto' : 'sendMessage';
+      const payload = photo ? { chat_id: row.id, photo, caption: message || undefined } : { chat_id: row.id, text: message, disable_web_page_preview: true };
+      const response = await fetch(`https://api.telegram.org/bot${c.env.BOT_TOKEN}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const result: any = await response.json();
+      if (response.ok && result?.ok) sent++; else failed++;
+    } catch { failed++; }
+  }
+  await c.env.DB.prepare('INSERT INTO broadcasts (message, sent_by, success_count) VALUES (?, ?, ?)').bind(message, c.get('tgUser').id, sent).run();
+  return c.json({ success: true, sent, failed, total: (results || []).length });
+});
 
 app.all('*', async (c) => {
   if (c.env.ASSETS) return c.env.ASSETS.fetch(c.req.raw);
