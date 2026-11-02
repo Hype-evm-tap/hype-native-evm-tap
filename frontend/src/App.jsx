@@ -217,6 +217,8 @@ export default function App() {
   const [completedTasks, setCompletedTasks] = useState([]);
   const [pendingTasks, setPendingTasks] = useState([]);
   const [taskVerification, setTaskVerification] = useState({});
+  const taskVerificationRef = useRef(taskVerification);
+  useEffect(() => { taskVerificationRef.current = taskVerification; }, [taskVerification]);
   const [taskCountdown, setTaskCountdown] = useState({});
   const [referrals, setReferrals] = useState([]);
   const [withdrawals, setWithdrawals] = useState([]);
@@ -1257,7 +1259,7 @@ showToast(data.error || 'Already checked in today');
   const resumeYouTubeTasks = async () => {
     if (document.visibilityState !== 'visible') return;
     for (const task of tasks) {
-      if (String(task.type || '').toLowerCase() === 'youtube' && taskVerification[task.id] === 'waiting_return') {
+      if (String(task.type || '').toLowerCase() === 'youtube' && taskVerificationRef.current[task.id] === 'waiting_return') {
         await verifyTask(task.id);
       }
     }
@@ -1275,7 +1277,7 @@ showToast(data.error || 'Already checked in today');
       document.removeEventListener('visibilitychange', onReturn);
       window.removeEventListener('focus', onReturn);
     };
-  }, [tab, tasks, taskVerification]);
+  }, [tab, tasks]);
 
   const requestWithdraw = async () => {
     const amount = parseFloat(wdAmount);
