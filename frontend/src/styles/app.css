@@ -3577,3 +3577,41 @@ body {
   top: 64% !important;
   z-index: 3 !important;
 }
+
+/* ========== COIN CLOSER TO PLATFORM + BEAM FILL ========== */
+
+/* Move coin lower so it sits closer to the platform */
+.atf-coin-wrap {
+  margin-top: 40px !important;
+  margin-bottom: -10px !important;
+  z-index: 8 !important;
+  position: relative !important;
+}
+
+.hype-logo {
+  min-height: 280px !important;
+  padding-top: 0 !important;
+  justify-content: flex-start !important;
+}
+
+/* Beam fills the remaining small gap perfectly */
+.platform-beam-img {
+  position: absolute !important;
+  left: 50% !important;
+  top: 42% !important;
+  transform: translateX(-50%) !important;
+  width: 44px !important;
+  height: 90px !important;
+  object-fit: fill !important;
+  z-index: 5 !important;
+  pointer-events: none !important;
+  opacity: 0.95 !important;
+  filter: drop-shadow(0 0 14px rgba(0, 255, 130, 0.8));
+  animation: beamGlow 2.2s ease-in-out infinite !important;
+}
+
+/* Platform stays put */
+.hype-platform-img {
+  top: 58% !important;
+  z-index: 3 !important;
+}
