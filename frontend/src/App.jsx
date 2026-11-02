@@ -1930,6 +1930,7 @@ const locked = !claimed && !current;
                   <div className="task-platform-icon"><Icon name={platformIcon} size={22} /></div>
                   <div className="task-info">
                     <div className="task-title">{t.title}</div>
+                    {taskType === 'youtube' && <a href={t.link} onClick={(e) => { e.preventDefault(); joinTask(t); }} style={{ display: 'block', fontSize: 11, opacity: 0.78, overflowWrap: 'anywhere', marginTop: 4 }}>YouTube link ↗</a>}
                     <div className="task-reward">+{formatNum(t.reward, 12)} HYPE</div>
                   </div>
                   <div className="task-action">
