@@ -253,8 +253,10 @@ app.use('/api/*', async (c, next) => {
   const identity = await verifyTelegramInitData(c.req.header('X-Telegram-Init-Data') || '', c.env.BOT_TOKEN || '');
   if (!identity) return c.json({ error: 'Unauthorized: valid Telegram session required' }, 401);
   c.set('tgUser', identity);
-  if (path.startsWith('/api/admin/') && !adminSet(c.env).has(identity.id)) {
-    return c.json({ error: 'Forbidden: admin only' }, 403);
+  if (path.startsWith('/api/admin/')) {
+    const configuredAdmin = adminSet(c.env).has(identity.id);
+    const dbUser = configuredAdmin ? null : await c.env.DB.prepare('SELECT is_admin FROM users WHERE id = ?').bind(identity.id).first<any>();
+    if (!configuredAdmin && !Number(dbUser?.is_admin)) return c.json({ error: 'Forbidden: admin only' }, 403);
   }
   return next();
 });
