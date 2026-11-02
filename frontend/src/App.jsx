@@ -212,6 +212,7 @@ export default function App() {
   const [leaderboard, setLeaderboard] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [completedTasks, setCompletedTasks] = useState([]);
+  const [pendingTasks, setPendingTasks] = useState([]); // opened Join, waiting claim
   const [referrals, setReferrals] = useState([]);
   const [withdrawals, setWithdrawals] = useState([]);
   const [energyLeft, setEnergyLeft] = useState(1000);
@@ -1158,18 +1159,46 @@ showToast(data.error || 'Already checked in today');
   }, [adminTab, tab, user]);
 
   const completeTask = async (taskId) => {
+    if (completedTasks.includes(taskId)) return;
     const data = await api('/api/tasks/complete', {
       method: 'POST',
-      body: JSON.stringify({ user: tg?.initDataUnsafe?.user, task_id: taskId }),
+      body: JSON.stringify({
+        user: window.Telegram?.WebApp?.initDataUnsafe?.user || tg?.initDataUnsafe?.user,
+        task_id: taskId,
+      }),
     });
     if (data.success) {
       showToast(`+${formatNum(data.reward, 12)} HYPE`);
-      setCompletedTasks((c) => [...c, taskId]);
+      setCompletedTasks((c) => (c.includes(taskId) ? c : [...c, taskId]));
+      setPendingTasks((p) => p.filter((id) => id !== taskId));
       loadUser();
     } else {
-      showToast(data.error || 'Failed');
+      // Already done on server
+      if (String(data.error || '').toLowerCase().includes('already') || data.already) {
+        setCompletedTasks((c) => (c.includes(taskId) ? c : [...c, taskId]));
+        setPendingTasks((p) => p.filter((id) => id !== taskId));
+        showToast('Already claimed');
+      } else {
+        showToast(data.error || 'Failed — try Claim again');
+      }
     }
   };
+
+  // When user returns to app after Join, auto-try complete pending tasks
+  useEffect(() => {
+    const onReturn = () => {
+      if (document.visibilityState !== 'visible') return;
+      pendingTasks.forEach((id) => {
+        if (!completedTasks.includes(id)) completeTask(id);
+      });
+    };
+    document.addEventListener('visibilitychange', onReturn);
+    window.addEventListener('focus', onReturn);
+    return () => {
+      document.removeEventListener('visibilitychange', onReturn);
+      window.removeEventListener('focus', onReturn);
+    };
+  }, [pendingTasks, completedTasks]);
 
   const requestWithdraw = async () => {
     const amount = parseFloat(wdAmount);
@@ -1274,18 +1303,9 @@ user: tg?.initDataUnsafe?.user,
   if (loading) {
     return (
       <div className="app loading-screen">
-        {/* Full-screen neon crystal background */}
+        {/* ATF dark gold loading — no crystals */}
         <div className="ls-bg" aria-hidden="true">
           <div className="ls-glow" />
-          <div className="ls-crystal c1" />
-          <div className="ls-crystal c2" />
-          <div className="ls-crystal c3" />
-          <div className="ls-crystal c4" />
-          <div className="ls-crystal c5" />
-          <div className="ls-crystal c6" />
-          <div className="ls-crystal c7" />
-          <div className="ls-crystal c8" />
-          <div className="ls-platform" />
         </div>
 
         <div className="loading-inner">
@@ -1357,20 +1377,20 @@ user: tg?.initDataUnsafe?.user,
       {/* TAP PAGE */}
       {tab === 'tap' && (
         <>
-          <div className="assets-card">
-            {/* 3D-style floating crowns above Assets (ATF) */}
+          <div className="assets-card atf-assets">
+            {/* Real 3D gold crowns above Assets */}
             <div className="assets-crowns" aria-hidden="true">
-              <span className="assets-crown c1"><Icon name="crown" size={18} /></span>
-              <span className="assets-crown c2"><Icon name="crown" size={14} /></span>
-              <span className="assets-crown c3"><Icon name="crown" size={16} /></span>
+              <img className="assets-crown-img c1" src="https://img.icons8.com/3d-fluency/94/crown.png" alt="" draggable={false} />
+              <img className="assets-crown-img c2" src="https://img.icons8.com/3d-fluency/94/crown.png" alt="" draggable={false} />
+              <img className="assets-crown-img c3" src="https://img.icons8.com/3d-fluency/94/crown.png" alt="" draggable={false} />
             </div>
             <div className="assets-label">ASSETS</div>
-            <div className="balance-row">
+            <div className="atf-balance-banner">
               <img src="/hype-logo.png" alt="HYPE" className="balance-icon" />
               <div className="balance-amount">{formatNum(user?.balance, 10)}</div>
               <div className="balance-symbol">HYPE</div>
             </div>
-            <div className="earned-chip">
+            <div className="earned-chip atf-earned">
               <Icon name="chart" size={14} /> +{formatNum(user?.total_earned, 10)} HYPE
             </div>
             <div className="hl-price">
@@ -1378,16 +1398,11 @@ user: tg?.initDataUnsafe?.user,
             </div>
           </div>
 
-          <div className="tap-area">
-            {/* Splash-style space background (rocks + glow) */}
+          <div className="tap-area atf-stage">
+            {/* ATF hall ambient + gold sparkles */}
             <div className="tap-bg" aria-hidden="true">
-              <div className="tap-glow-core" />
-              <div className="tap-rock r1" />
-              <div className="tap-rock r2" />
-              <div className="tap-rock r3" />
-              <div className="tap-rock r4" />
-              <div className="tap-rock r5" />
-              <div className="tap-rock r6" />
+              <span className="atf-spark s1" /><span className="atf-spark s2" /><span className="atf-spark s3" />
+              <span className="atf-spark s4" /><span className="atf-spark s5" /><span className="atf-spark s6" />
             </div>
 
             <div
@@ -1399,14 +1414,19 @@ user: tg?.initDataUnsafe?.user,
               role="button"
               aria-label="Tap to mine"
             >
-              {/* ATF-style floating golden coin (no bottom plate) */}
+              {/* Coin only — no side rings, no crown on coin */}
               <div className="atf-coin-wrap">
-                <div className="atf-coin-ring ring-outer" />
-                <div className="atf-coin-ring ring-mid" />
-                <div className="atf-coin-ring ring-inner" />
                 <div className="atf-coin-glow" />
                 <img src="/hype-logo.png" alt="HYPE Logo" className="logo-img" draggable={false} />
-                <div className="atf-coin-crown"><Icon name="crown" size={22} /></div>
+              </div>
+
+              {/* ATF-style gold platform under coin */}
+              <div className="atf-platform" aria-hidden="true">
+                <div className="atf-platform-glow" />
+                <div className="atf-platform-top" />
+                <div className="atf-platform-mid" />
+                <div className="atf-platform-bottom" />
+                <div className="atf-platform-shine" />
               </div>
 
               {coins.map((c) => (
@@ -1431,7 +1451,7 @@ user: tg?.initDataUnsafe?.user,
             </div>
           </div>
 
-          {/* ATF-style golden energy pipe */}
+          {/* ATF bright gold energy glass bar */}
           <div className="energy-wrap">
             <div className="energy-pipe">
               <div className="energy-pipe-end left"><Icon name="zap" size={16} /></div>
@@ -1653,25 +1673,25 @@ user: tg?.initDataUnsafe?.user,
             <div className="miner-energy-foot"><span><i /> Live energy</span><span>{energyLeft <= 0 ? `Recharge ${formatTime(waitSec)}` : 'Regenerates on cooldown'}</span></div>
           </div>
 
-          {/* ATF-style Miner Store Levels 1–100 */}
+          {/* ATF-style Miner Store Levels 1–1000 */}
           <div className="miner-levels-head">
             <div>
               <span className="miner-eyebrow">MINER STORE</span>
-              <h2>Levels <span>1–100</span></h2>
+              <h2>Levels <span>1–1000</span></h2>
             </div>
-            <span className="miner-level-count">100 LEVELS</span>
+            <span className="miner-level-count">1000 LEVELS</span>
           </div>
           <div className="miner-level-note">ATF-style machine cards. Active level is unlocked. Higher levels require more HYPE (visual roadmap — server rules unchanged).</div>
 
           <div className="atf-level-grid">
-            {Array.from({ length: 100 }, (_, i) => i + 1).map((level) => {
+            {Array.from({ length: 1000 }, (_, i) => i + 1).map((level) => {
               const current = Number(user?.level || 1);
               const isActive = level === current;
               const isUnlocked = level <= current;
-              // Approximate ATF-style pricing & speed curve
-              const priceUsd = (0.02 + level * 0.0015 + Math.pow(level / 40, 1.6) * 0.01).toFixed(4);
-              const speedTh = (0.18 + level * 0.0045 + Math.pow(level / 50, 1.4) * 0.08).toFixed(2);
-              const needHype = Math.max(0, Math.round((level - current) * 8 + level * 1.2));
+              // Approximate ATF-style pricing & speed curve (scaled to 1000)
+              const priceUsd = (0.02 + level * 0.0012 + Math.pow(level / 80, 1.55) * 0.012).toFixed(4);
+              const speedTh = (0.18 + level * 0.0038 + Math.pow(level / 90, 1.35) * 0.1).toFixed(2);
+              const needHype = Math.max(0, Math.round((level - current) * 6 + level * 0.9));
               let statusClass = 'locked';
               let statusText = `NEED ${needHype} HYPE`;
               if (isActive) { statusClass = 'active'; statusText = 'ACTIVE'; }
@@ -1819,24 +1839,38 @@ const locked = !claimed && !current;
           {tasks.length === 0 && <div className="card">No tasks yet. Check back later.</div>}
           {tasks.map((t) => {
             const done = completedTasks.includes(t.id);
+            const pending = pendingTasks.includes(t.id);
             return (
-              <div className="card" key={t.id}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
+              <div className="card task-card" key={t.id}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700 }}>{t.title}</div>
-                    <div style={{ fontSize: '0.8rem', color: '#00ff88', marginTop: 4 }}>
+                    <div style={{ fontSize: '0.8rem', color: '#f0d878', marginTop: 4 }}>
                       +{formatNum(t.reward, 12)} HYPE
                     </div>
                   </div>
                   {done ? (
-                    <span style={{ color: '#00ff88' }}><Icon name="check" size={14} /> Done</span>
+                    <span className="task-done-badge"><Icon name="check" size={14} /> Done</span>
+                  ) : pending ? (
+                    <button
+                      className="btn btn-primary claim-btn"
+                      style={{ padding: '8px 14px', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
+                      onClick={() => completeTask(t.id)}
+                    >
+                      Claim
+                    </button>
                   ) : (
                     <button
                       className="btn btn-primary"
-                      style={{ padding: '8px 14px', fontSize: '0.85rem' }}
+                      style={{ padding: '8px 14px', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
                       onClick={() => {
-                        window.open(t.link, '_blank');
-                        setTimeout(() => completeTask(t.id), 1500);
+                        if (t.link) {
+                          try { window.Telegram?.WebApp?.openLink?.(t.link); } catch (_) {}
+                          window.open(t.link, '_blank');
+                        }
+                        setPendingTasks((p) => (p.includes(t.id) ? p : [...p, t.id]));
+                        // also try complete after short delay (Telegram often returns quickly)
+                        setTimeout(() => completeTask(t.id), 2500);
                       }}
                     >
                       Join
