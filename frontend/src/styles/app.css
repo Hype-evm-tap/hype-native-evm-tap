@@ -2424,3 +2424,695 @@ body {
   color: #f5ecd0 !important;
   box-shadow: 0 8px 28px rgba(0,0,0,0.5), 0 0 20px rgba(212,175,55,0.15) !important;
 }
+
+/* ========== HARD REMOVE OLD CRYSTAL / ROCK / GREEN BG ========== */
+.ls-crystal,
+.ls-platform,
+.tap-rock,
+.tap-glow-core,
+.logo-platform,
+.logo-platform-beam,
+.logo-platform-base,
+.logo-platform-glow,
+.logo-ring,
+.ls-bg .ls-crystal {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.ls-bg, .ls-glow {
+  background: radial-gradient(ellipse 200px 140px at 50% 40%, rgba(212, 175, 55, 0.2) 0%, transparent 70%) !important;
+}
+
+.tap-bg {
+  background: radial-gradient(ellipse 280px 200px at 50% 50%, rgba(212, 175, 55, 0.14) 0%, transparent 70%) !important;
+}
+
+/* Force pure ATF dark gold app background (no green) */
+.app {
+  background:
+    radial-gradient(ellipse 180px 120px at 50% 8%, rgba(212, 175, 55, 0.2) 0%, transparent 70%),
+    radial-gradient(ellipse 100px 160px at 8% 40%, rgba(180, 140, 40, 0.14) 0%, transparent 65%),
+    radial-gradient(ellipse 90px 140px at 92% 45%, rgba(180, 140, 40, 0.14) 0%, transparent 65%),
+    radial-gradient(ellipse 200px 100px at 50% 95%, rgba(0, 0, 0, 0.65) 0%, transparent 60%),
+    linear-gradient(180deg, #0a0804 0%, #050403 40%, #020201 75%, #000000 100%) !important;
+}
+
+.loading-screen {
+  background: linear-gradient(180deg, #0a0804 0%, #050403 50%, #000 100%) !important;
+}
+
+/* Task Done badge */
+.task-done-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 14px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #1a1200 !important;
+  background: linear-gradient(135deg, #c9a227, #f0d878) !important;
+  box-shadow: 0 0 12px rgba(212, 175, 55, 0.35);
+}
+
+/* Levels grid taller for 1000 */
+.atf-level-grid {
+  max-height: 520px !important;
+  grid-template-columns: repeat(2, 1fr) !important;
+}
+
+/* Tasks page gold */
+.page .card, .task-card {
+  background: linear-gradient(160deg, rgba(22, 16, 6, 0.95), rgba(8, 6, 2, 0.96)) !important;
+  border: 1px solid rgba(212, 175, 55, 0.28) !important;
+  color: #f5ecd0 !important;
+}
+
+/* Check-in / tasks green → gold force */
+.checkin-card,
+.checkin-hero,
+.checkin-title,
+.cs-val,
+.cs-label {
+  color: #f0d878 !important;
+}
+.checkin-title {
+  background: linear-gradient(90deg, #f0d878, #ffe566) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+/* ========== REAL ATF HALL BACKGROUND + 3D CROWN IMAGES + BRIGHT GOLD ENERGY ========== */
+
+/* Full ATF dark luxury hall — pillars, floor glow, depth */
+.app {
+  background:
+    /* top chandelier / gold light */
+    radial-gradient(ellipse 220px 100px at 50% 0%, rgba(255, 215, 100, 0.28) 0%, transparent 70%),
+    /* left pillar glow */
+    linear-gradient(90deg, rgba(180, 140, 40, 0.35) 0%, transparent 8%),
+    /* right pillar glow */
+    linear-gradient(270deg, rgba(180, 140, 40, 0.35) 0%, transparent 8%),
+    /* side column hints */
+    radial-gradient(ellipse 40px 80% at 3% 50%, rgba(212, 175, 55, 0.22) 0%, transparent 70%),
+    radial-gradient(ellipse 40px 80% at 97% 50%, rgba(212, 175, 55, 0.22) 0%, transparent 70%),
+    /* floor gold reflection */
+    radial-gradient(ellipse 320px 120px at 50% 100%, rgba(255, 200, 60, 0.18) 0%, transparent 65%),
+    /* center stage glow */
+    radial-gradient(ellipse 280px 200px at 50% 55%, rgba(212, 175, 55, 0.12) 0%, transparent 70%),
+    /* base dark gold hall */
+    linear-gradient(180deg, #0c0a06 0%, #080604 30%, #040302 65%, #000000 100%) !important;
+}
+
+.app::before,
+.app::after {
+  content: '' !important;
+  position: fixed !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 36px !important;
+  pointer-events: none !important;
+  z-index: 1 !important;
+  opacity: 0.85 !important;
+  background:
+    linear-gradient(180deg,
+      transparent 0%,
+      rgba(255, 215, 100, 0.45) 8%,
+      rgba(212, 175, 55, 0.35) 25%,
+      rgba(180, 140, 40, 0.25) 50%,
+      rgba(212, 175, 55, 0.4) 75%,
+      rgba(255, 215, 100, 0.3) 92%,
+      transparent 100%) !important;
+  box-shadow:
+    inset 0 0 30px rgba(255, 200, 60, 0.35),
+    0 0 40px rgba(212, 175, 55, 0.2) !important;
+}
+.app::before {
+  left: 0 !important;
+  border-right: 2px solid rgba(255, 215, 100, 0.5) !important;
+}
+.app::after {
+  right: 0 !important;
+  border-left: 2px solid rgba(255, 215, 100, 0.5) !important;
+}
+
+/* Real 3D crown images above assets */
+.assets-crowns {
+  position: absolute !important;
+  top: -28px !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 40px !important;
+  pointer-events: none !important;
+  z-index: 8 !important;
+}
+.assets-crown-img {
+  position: absolute !important;
+  width: 36px !important;
+  height: 36px !important;
+  object-fit: contain !important;
+  filter: drop-shadow(0 0 12px rgba(255, 200, 60, 0.9)) drop-shadow(0 4px 8px rgba(0,0,0,0.6)) !important;
+  animation: crownFloat 3.2s ease-in-out infinite !important;
+}
+.assets-crown-img.c1 { left: 14%; top: 0; animation-delay: 0s; width: 40px; height: 40px; }
+.assets-crown-img.c2 { left: 50%; transform: translateX(-50%); top: -8px; animation-delay: -1.1s; width: 48px; height: 48px; }
+.assets-crown-img.c3 { right: 14%; top: 2px; animation-delay: -2s; width: 34px; height: 34px; }
+
+/* Crown on coin */
+.atf-coin-crown-img {
+  position: absolute !important;
+  top: -6px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: 42px !important;
+  height: 42px !important;
+  object-fit: contain !important;
+  z-index: 15 !important;
+  filter: drop-shadow(0 0 14px rgba(255, 215, 80, 1)) drop-shadow(0 4px 10px rgba(0,0,0,0.7)) !important;
+  animation: crownFloat 2.8s ease-in-out infinite !important;
+  pointer-events: none !important;
+}
+
+/* BRIGHT GOLD energy glass bar (ATF style) */
+.energy-wrap {
+  margin: 8px 20px 16px !important;
+  position: relative !important;
+}
+.energy-pipe {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0 !important;
+  background: linear-gradient(180deg, #3a2e10 0%, #1a1408 100%) !important;
+  border-radius: 28px !important;
+  padding: 5px !important;
+  border: 2px solid rgba(255, 215, 100, 0.65) !important;
+  box-shadow:
+    0 0 24px rgba(255, 200, 60, 0.45),
+    inset 0 0 16px rgba(0, 0, 0, 0.5),
+    0 4px 12px rgba(0, 0, 0, 0.4) !important;
+}
+.energy-pipe-end {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(145deg, #ffe566, #c9a227 40%, #8a6d08) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #1a1200 !important;
+  box-shadow:
+    0 0 14px rgba(255, 200, 60, 0.7),
+    inset 0 2px 4px rgba(255, 255, 200, 0.4) !important;
+  flex-shrink: 0 !important;
+  z-index: 2 !important;
+}
+.energy-pipe-body {
+  flex: 1 !important;
+  height: 22px !important;
+  border-radius: 14px !important;
+  background: linear-gradient(180deg, #1a1405 0%, #0a0802 50%, #050403 100%) !important;
+  position: relative !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(180, 140, 40, 0.4) !important;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6) !important;
+}
+.energy-pipe-fill {
+  height: 100% !important;
+  border-radius: 12px !important;
+  background: linear-gradient(90deg,
+    #b8860b 0%,
+    #daa520 20%,
+    #ffd700 45%,
+    #ffe566 55%,
+    #ffd700 70%,
+    #daa520 90%,
+    #b8860b 100%) !important;
+  background-size: 200% 100% !important;
+  box-shadow:
+    0 0 16px rgba(255, 215, 0, 0.7),
+    inset 0 2px 4px rgba(255, 255, 220, 0.5),
+    inset 0 -2px 4px rgba(120, 80, 0, 0.4) !important;
+  animation: goldEnergyShine 2.2s linear infinite !important;
+  position: relative !important;
+}
+@keyframes goldEnergyShine {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+.energy-pipe-shine {
+  position: absolute !important;
+  top: 2px !important;
+  left: 8% !important;
+  right: 8% !important;
+  height: 40% !important;
+  border-radius: 10px !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.45), transparent) !important;
+  pointer-events: none !important;
+  z-index: 3 !important;
+}
+.energy-pct-badge {
+  background: linear-gradient(135deg, #c9a227, #ffe566) !important;
+  color: #1a1200 !important;
+  font-weight: 900 !important;
+  box-shadow: 0 0 12px rgba(255, 200, 60, 0.5) !important;
+  border: none !important;
+}
+
+/* Assets card more ATF gold */
+.assets-card {
+  background: linear-gradient(160deg, rgba(30, 22, 8, 0.92), rgba(10, 8, 3, 0.96)) !important;
+  border: 1.5px solid rgba(255, 215, 100, 0.4) !important;
+  box-shadow:
+    0 0 40px rgba(212, 175, 55, 0.25),
+    inset 0 0 50px rgba(255, 200, 60, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.45) !important;
+}
+.assets-card::before {
+  background: linear-gradient(135deg, #ffd700, #f0d878, #c9a227, #ffd700) !important;
+  opacity: 0.7 !important;
+}
+.assets-label {
+  background: linear-gradient(90deg, #1a1408, #0a0804) !important;
+  color: #ffe566 !important;
+  border-color: rgba(255, 215, 100, 0.6) !important;
+  box-shadow: 0 0 16px rgba(255, 200, 60, 0.35) !important;
+  letter-spacing: 4px !important;
+}
+
+/* Coin brighter gold glow */
+.atf-coin-glow {
+  background: radial-gradient(circle, rgba(255, 215, 80, 0.55) 0%, rgba(212, 175, 55, 0.2) 40%, transparent 70%) !important;
+}
+.atf-coin-ring.ring-inner {
+  border-color: rgba(255, 230, 120, 0.95) !important;
+  box-shadow: 0 0 22px rgba(255, 215, 80, 0.65), inset 0 0 14px rgba(255, 230, 120, 0.3) !important;
+}
+.hype-logo .logo-img {
+  filter:
+    drop-shadow(0 12px 28px rgba(255, 200, 60, 0.55))
+    drop-shadow(0 4px 12px rgba(0, 0, 0, 0.75))
+    drop-shadow(0 0 24px rgba(255, 220, 100, 0.4)) !important;
+}
+
+/* Kill any remaining green particle / crystal visuals */
+.ls-crystal, .tap-rock, .tap-glow-core, .ls-platform,
+.logo-platform, .logo-platform-base, .logo-platform-beam, .logo-platform-glow {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+/* ========== REAL ATF MATCH — pedestal, sparkles, ornate assets, hall ========== */
+
+/* Stage for coin + pedestal */
+.atf-stage {
+  min-height: 340px !important;
+  padding-bottom: 20px !important;
+}
+
+/* Gold sparkles floating in background */
+.atf-spark {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #ffe566;
+  box-shadow: 0 0 8px 2px rgba(255, 215, 80, 0.9);
+  animation: sparkleFloat 4s ease-in-out infinite;
+  pointer-events: none;
+}
+.atf-spark.s1 { top: 12%; left: 18%; animation-delay: 0s; }
+.atf-spark.s2 { top: 22%; right: 15%; animation-delay: -0.8s; width: 3px; height: 3px; }
+.atf-spark.s3 { top: 55%; left: 8%; animation-delay: -1.5s; }
+.atf-spark.s4 { top: 48%; right: 10%; animation-delay: -2.2s; width: 5px; height: 5px; }
+.atf-spark.s5 { top: 70%; left: 25%; animation-delay: -3s; width: 3px; height: 3px; }
+.atf-spark.s6 { top: 15%; left: 55%; animation-delay: -1.1s; width: 3px; height: 3px; }
+@keyframes sparkleFloat {
+  0%, 100% { opacity: 0.3; transform: translateY(0) scale(0.8); }
+  50% { opacity: 1; transform: translateY(-14px) scale(1.2); }
+}
+
+/* ATF gold pedestal under coin (like real ATF) */
+.atf-pedestal {
+  position: absolute;
+  left: 50%;
+  top: 72%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: 70px;
+  z-index: 1;
+  pointer-events: none;
+}
+.atf-pedestal-glow {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  transform: translate(-50%, -50%);
+  width: 220px;
+  height: 50px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(255, 200, 60, 0.55) 0%, rgba(212, 175, 55, 0.2) 45%, transparent 70%);
+  filter: blur(8px);
+  animation: platformPulse 2.5s ease-in-out infinite;
+}
+.atf-pedestal-base {
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  transform: translate(-50%, -50%);
+  width: 160px;
+  height: 28px;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 50% 30%,
+      rgba(255, 230, 120, 0.95) 0%,
+      rgba(218, 165, 32, 0.9) 35%,
+      rgba(139, 105, 20, 0.95) 70%,
+      rgba(60, 40, 5, 1) 100%);
+  border: 2.5px solid rgba(255, 215, 100, 0.9);
+  box-shadow:
+    0 0 24px rgba(255, 200, 60, 0.6),
+    0 8px 16px rgba(0, 0, 0, 0.5),
+    inset 0 2px 8px rgba(255, 255, 200, 0.35),
+    inset 0 -4px 10px rgba(0, 0, 0, 0.4);
+}
+.atf-pedestal-ring {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  border-style: solid;
+  pointer-events: none;
+}
+.atf-pedestal-ring.r1 {
+  top: 18px;
+  width: 100px;
+  height: 22px;
+  border-width: 2px;
+  border-color: rgba(255, 220, 100, 0.7);
+  box-shadow: 0 0 12px rgba(255, 200, 60, 0.4);
+}
+.atf-pedestal-ring.r2 {
+  top: 28px;
+  width: 140px;
+  height: 28px;
+  border-width: 1.5px;
+  border-color: rgba(212, 175, 55, 0.45);
+}
+
+/* Ornate ATF assets banner */
+.atf-assets {
+  margin: 16px 14px 8px !important;
+  padding: 28px 14px 14px !important;
+  border-radius: 20px !important;
+  background:
+    linear-gradient(160deg, rgba(35, 26, 8, 0.95) 0%, rgba(12, 9, 3, 0.98) 100%) !important;
+  border: 2px solid transparent !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 215, 100, 0.35),
+    0 0 40px rgba(212, 175, 55, 0.3),
+    inset 0 0 60px rgba(255, 200, 60, 0.05) !important;
+  position: relative !important;
+  overflow: visible !important;
+}
+.atf-assets::before {
+  content: '' !important;
+  position: absolute !important;
+  inset: -2px !important;
+  border-radius: 22px !important;
+  background: linear-gradient(135deg, #ffd700, #f0d878, #c9a227, #ffd700) !important;
+  z-index: -1 !important;
+  opacity: 0.75 !important;
+}
+.atf-balance-banner {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  margin: 6px auto 8px !important;
+  padding: 10px 20px !important;
+  max-width: 92% !important;
+  border-radius: 16px !important;
+  background: linear-gradient(180deg, rgba(50, 38, 12, 0.95), rgba(20, 14, 4, 0.98)) !important;
+  border: 1.5px solid rgba(255, 215, 100, 0.55) !important;
+  box-shadow:
+    0 0 20px rgba(255, 200, 60, 0.25),
+    inset 0 1px 0 rgba(255, 230, 150, 0.2) !important;
+}
+.atf-balance-banner .balance-amount {
+  font-size: 1.65rem !important;
+  font-weight: 900 !important;
+  color: #fff8e0 !important;
+  text-shadow: 0 0 20px rgba(255, 215, 80, 0.6) !important;
+  letter-spacing: 0.5px !important;
+}
+.atf-balance-banner .balance-symbol {
+  font-size: 1.1rem !important;
+  font-weight: 800 !important;
+  color: #ffe566 !important;
+}
+.atf-earned {
+  background: linear-gradient(135deg, rgba(0, 80, 40, 0.5), rgba(0, 40, 20, 0.6)) !important;
+  border: 1px solid rgba(0, 255, 136, 0.4) !important;
+  color: #00ff99 !important;
+  box-shadow: 0 0 14px rgba(0, 255, 136, 0.2) !important;
+  font-weight: 800 !important;
+}
+
+/* Coin sits above pedestal */
+.atf-coin-wrap {
+  margin-bottom: 36px !important;
+  z-index: 5 !important;
+}
+.hype-logo {
+  min-height: 260px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  padding-top: 10px !important;
+}
+
+/* Stronger side pillars like ATF */
+.app::before,
+.app::after {
+  width: 42px !important;
+  opacity: 0.9 !important;
+  background:
+    linear-gradient(180deg,
+      transparent 0%,
+      rgba(255, 215, 100, 0.5) 6%,
+      rgba(255, 200, 60, 0.35) 18%,
+      rgba(180, 140, 40, 0.3) 40%,
+      rgba(212, 175, 55, 0.4) 60%,
+      rgba(255, 215, 100, 0.45) 82%,
+      transparent 100%) !important;
+  box-shadow:
+    inset 0 0 35px rgba(255, 200, 60, 0.4),
+    0 0 50px rgba(212, 175, 55, 0.25) !important;
+}
+.app::before {
+  border-right: 2.5px solid rgba(255, 215, 100, 0.55) !important;
+}
+.app::after {
+  border-left: 2.5px solid rgba(255, 215, 100, 0.55) !important;
+}
+
+/* Header more ATF dark gold */
+.header {
+  background: linear-gradient(180deg, rgba(12, 10, 4, 0.98) 0%, rgba(5, 4, 2, 0.85) 100%) !important;
+  border-bottom: 1px solid rgba(255, 215, 100, 0.25) !important;
+}
+
+/* Bottom nav ATF dark gold */
+.bottom-nav {
+  background: linear-gradient(0deg, rgba(8, 6, 2, 0.98), rgba(14, 11, 5, 0.96)) !important;
+  border-top: 1px solid rgba(255, 215, 100, 0.3) !important;
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.5) !important;
+}
+.nav-item.active {
+  color: #ffe566 !important;
+  background: rgba(255, 215, 100, 0.12) !important;
+  box-shadow: 0 0 16px rgba(255, 200, 60, 0.25) !important;
+}
+
+/* ========== COIN: NO RINGS, NO CROWN — ATF FLAT GOLD PLATFORM ========== */
+
+/* Hide ALL coin rings and coin-crown completely */
+.atf-coin-ring,
+.ring-outer, .ring-mid, .ring-inner,
+.atf-coin-crown, .atf-coin-crown-img,
+.atf-pedestal, .atf-pedestal-ring, .atf-pedestal-base, .atf-pedestal-glow {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Clean coin — soft gold glow only */
+.atf-coin-wrap {
+  position: relative !important;
+  width: 160px !important;
+  height: 160px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 6 !important;
+  margin-bottom: 0 !important;
+}
+.atf-coin-glow {
+  position: absolute !important;
+  inset: -28px !important;
+  border-radius: 50% !important;
+  background: radial-gradient(circle, rgba(255, 200, 60, 0.4) 0%, rgba(212, 175, 55, 0.12) 45%, transparent 70%) !important;
+  filter: blur(14px) !important;
+  animation: atfGlow 2.8s ease-in-out infinite !important;
+  z-index: 0 !important;
+  display: block !important;
+}
+.hype-logo .logo-img {
+  width: 130px !important;
+  height: 130px !important;
+  filter:
+    drop-shadow(0 14px 28px rgba(255, 200, 60, 0.5))
+    drop-shadow(0 4px 12px rgba(0, 0, 0, 0.7))
+    drop-shadow(0 0 18px rgba(255, 220, 100, 0.35)) !important;
+  z-index: 10 !important;
+  position: relative !important;
+}
+
+/* ATF-style multi-tier gold platform under coin */
+.atf-platform {
+  position: absolute !important;
+  left: 50% !important;
+  top: 78% !important;
+  transform: translateX(-50%) !important;
+  width: 220px !important;
+  height: 55px !important;
+  z-index: 2 !important;
+  pointer-events: none !important;
+  display: block !important;
+}
+.atf-platform-glow {
+  position: absolute !important;
+  left: 50% !important;
+  top: 30% !important;
+  transform: translate(-50%, -50%) !important;
+  width: 240px !important;
+  height: 55px !important;
+  border-radius: 50% !important;
+  background: radial-gradient(ellipse, rgba(255, 200, 60, 0.55) 0%, rgba(212, 175, 55, 0.2) 50%, transparent 72%) !important;
+  filter: blur(10px) !important;
+  animation: platformPulse 2.6s ease-in-out infinite !important;
+}
+.atf-platform-top {
+  position: absolute !important;
+  left: 50% !important;
+  top: 8px !important;
+  transform: translateX(-50%) !important;
+  width: 130px !important;
+  height: 18px !important;
+  border-radius: 50% !important;
+  background: radial-gradient(ellipse at 50% 35%,
+    #ffe566 0%,
+    #f0d878 25%,
+    #c9a227 60%,
+    #8a6d08 100%) !important;
+  border: 2px solid rgba(255, 230, 150, 0.9) !important;
+  box-shadow:
+    0 0 16px rgba(255, 215, 80, 0.6),
+    inset 0 2px 6px rgba(255, 255, 220, 0.45),
+    inset 0 -3px 6px rgba(80, 50, 0, 0.35) !important;
+  z-index: 4 !important;
+}
+.atf-platform-mid {
+  position: absolute !important;
+  left: 50% !important;
+  top: 16px !important;
+  transform: translateX(-50%) !important;
+  width: 170px !important;
+  height: 22px !important;
+  border-radius: 50% !important;
+  background: radial-gradient(ellipse at 50% 30%,
+    #f0d878 0%,
+    #d4af37 40%,
+    #a07c1a 75%,
+    #5c4508 100%) !important;
+  border: 2px solid rgba(255, 200, 80, 0.7) !important;
+  box-shadow:
+    0 0 18px rgba(255, 200, 60, 0.45),
+    inset 0 1px 4px rgba(255, 240, 180, 0.3) !important;
+  z-index: 3 !important;
+}
+.atf-platform-bottom {
+  position: absolute !important;
+  left: 50% !important;
+  top: 26px !important;
+  transform: translateX(-50%) !important;
+  width: 200px !important;
+  height: 26px !important;
+  border-radius: 50% !important;
+  background: radial-gradient(ellipse at 50% 25%,
+    #c9a227 0%,
+    #8a6d08 45%,
+    #3d2e05 85%,
+    #1a1200 100%) !important;
+  border: 2px solid rgba(180, 140, 40, 0.6) !important;
+  box-shadow:
+    0 6px 16px rgba(0, 0, 0, 0.55),
+    0 0 20px rgba(212, 175, 55, 0.3),
+    inset 0 2px 4px rgba(255, 220, 100, 0.15) !important;
+  z-index: 2 !important;
+}
+.atf-platform-shine {
+  position: absolute !important;
+  left: 50% !important;
+  top: 10px !important;
+  transform: translateX(-50%) !important;
+  width: 90px !important;
+  height: 8px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(180deg, rgba(255, 255, 240, 0.5), transparent) !important;
+  z-index: 5 !important;
+  pointer-events: none !important;
+}
+
+/* Layout: coin above platform */
+.hype-logo {
+  min-height: 280px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  padding-top: 8px !important;
+  position: relative !important;
+}
+.atf-stage {
+  min-height: 320px !important;
+}
+
+/* Kill green side auras and any leftover rings on coin */
+.hype-logo::before,
+.hype-logo::after {
+  display: none !important;
+  content: none !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+.atf-coin-ring,
+.atf-coin-ring.ring-inner,
+.atf-coin-ring.ring-mid,
+.atf-coin-ring.ring-outer {
+  display: none !important;
+  opacity: 0 !important;
+  border: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
