@@ -168,7 +168,9 @@ async function ensureUser(db: D1Database, env: Bindings, tgUser: TgUser, startPa
     ).bind(tgUser.id, tgUser.username || '', tgUser.first_name || '', tgUser.last_name || '', energyMax, shouldAdmin).run();
 
     if (startParam) {
-      const refId = parseInt(String(startParam).replace(/\D/g, ''), 10);
+      const refText = String(startParam).trim();
+      const refMatch = refText.match(/^(?:ref_)?([1-9]\\d{0,19})$/i);
+      const refId = refMatch ? Number(refMatch[1]) : 0;
       if (refId && refId !== tgUser.id) {
         const ref = await db.prepare('SELECT id FROM users WHERE id = ?').bind(refId).first();
         if (ref) {
