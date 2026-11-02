@@ -569,24 +569,30 @@ app.post('/api/admin/tasks', async (c) => {
   return c.json({ success: true, id: info.meta.last_row_id });
 });
 app.delete('/api/admin/tasks/:id', async (c) => {
-  await c.env.DB.prepare('DELETE FROM user_tasks WHERE task_id = ?').bind(c.req.param('id')).run();
-  await c.env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(c.req.param('id')).run();
+  const id = Number(c.req.param('id'));
+  if (!Number.isSafeInteger(id) || id <= 0) return c.json({ error: 'Invalid task id' }, 400);
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM user_tasks WHERE task_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(id),
+  ]);
   return c.json({ success: true });
 });
 app.get('/api/admin/settings', async (c) => c.json({ settings: await getConfig(c.env.DB, c.env) }));
 app.post('/api/admin/settings', async (c) => {
   const b = await c.req.json().catch(() => ({}));
   const bounds: Record<string, [number, number]> = { tap_reward: [0, 1000000], referral_reward: [0, 1000000], min_withdraw: [0.00000001, 1000000], energy_max: [1, 1000000], energy_cooldown: [60, 604800], daily_checkin_reward: [0, 1000000], streak_bonus: [0, 1000000] };
+  const values: Array<[string, string]> = [];
   for (const [k, [minValue, maxValue]] of Object.entries(bounds)) {
     if (b[k] === undefined || b[k] === null || b[k] === '') continue;
     const n = Number(b[k]);
     if (!Number.isFinite(n) || n < minValue || n > maxValue) return c.json({ error: `Invalid ${k}` }, 400);
-    await setSetting(c.env.DB, k, String(n));
+    values.push([k, String(n)]);
   }
   if (b.checkin_day_rewards !== undefined) {
     if (!Array.isArray(b.checkin_day_rewards) || b.checkin_day_rewards.length !== 7 || b.checkin_day_rewards.some((v: any) => !Number.isFinite(Number(v)) || Number(v) < 0 || Number(v) > 1000000)) return c.json({ error: 'checkin_day_rewards must contain 7 valid non-negative numbers' }, 400);
-    await setSetting(c.env.DB, 'checkin_day_rewards', JSON.stringify(b.checkin_day_rewards.map(Number)));
+    values.push(['checkin_day_rewards', JSON.stringify(b.checkin_day_rewards.map(Number))]);
   }
+  if (values.length) await c.env.DB.batch(values.map(([key, value]) => c.env.DB.prepare(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, strftime('%s','now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).bind(key, value)));
   return c.json({ success: true, settings: await getConfig(c.env.DB, c.env) });
 });
 app.get('/api/admin/leaderboard', async (c) => {
@@ -595,7 +601,7 @@ app.get('/api/admin/leaderboard', async (c) => {
   return c.json({ leaderboard: results || [] });
 });
 app.get('/api/admin/referrals', async (c) => {
-  const limit = Math.min(100, parseInt(c.req.query('limit') || '50', 10));
+  const limit = Math.max(1, Math.min(100, Number.parseInt(c.req.query('limit') || '50', 10) || 50));
   const { results } = await c.env.DB.prepare(
     `SELECT r.*, u1.username as referrer_name, u2.username as referred_name FROM referrals r
      LEFT JOIN users u1 ON r.referrer_id = u1.id LEFT JOIN users u2 ON r.referred_id = u2.id
@@ -627,11 +633,14 @@ app.post('/api/admin/users/:id', async (c) => {
   return c.json({ success: true, user: publicUser(updated, c.env) });
 });
 app.delete('/api/admin/users/:id', async (c) => {
-  const id = c.req.param('id');
-  await c.env.DB.prepare('DELETE FROM user_tasks WHERE user_id = ?').bind(id).run();
-  await c.env.DB.prepare('DELETE FROM referrals WHERE referrer_id = ? OR referred_id = ?').bind(id, id).run();
-  await c.env.DB.prepare('DELETE FROM withdrawals WHERE user_id = ?').bind(id).run();
-  await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id).run();
+  const id = Number(c.req.param('id'));
+  if (!Number.isSafeInteger(id) || id <= 0) return c.json({ error: 'Invalid user id' }, 400);
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM user_tasks WHERE user_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM referrals WHERE referrer_id = ? OR referred_id = ?').bind(id, id),
+    c.env.DB.prepare('DELETE FROM withdrawals WHERE user_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id),
+  ]);
   return c.json({ success: true });
 });
 app.post('/api/admin/broadcast', async (c) => {
