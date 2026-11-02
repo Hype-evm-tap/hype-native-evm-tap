@@ -404,7 +404,31 @@ body {
   pointer-events: none;
 }
 
-50%      { opacity: 1;   transform: translateX(-50%) scaleY(1.1) scaleX(1.06); }
+/* Vertical energy beam */
+.logo-platform-beam {
+  position: absolute;
+  left: 50%;
+  top: -110px;
+  transform: translateX(-50%);
+  width: 64px;
+  height: 180px;
+  background: linear-gradient(180deg,
+    rgba(0, 255, 200, 0.0) 0%,
+    rgba(0, 255, 160, 0.45) 25%,
+    rgba(0, 255, 136, 0.75) 50%,
+    rgba(0, 200, 100, 0.25) 75%,
+    transparent 100%);
+  filter: blur(7px);
+  border-radius: 50%;
+  opacity: 0.95;
+  animation: beamPulse 2.3s ease-in-out infinite;
+  z-index: 0;
+  box-shadow: 0 0 30px rgba(0, 255, 136, 0.45);
+}
+
+@keyframes beamPulse {
+  0%, 100% { opacity: 0.7; transform: translateX(-50%) scaleY(1) scaleX(1); }
+  50%      { opacity: 1;   transform: translateX(-50%) scaleY(1.1) scaleX(1.06); }
 }
 
 /* Outer soft glow */
@@ -1072,6 +1096,7 @@ button.secondary {
   box-shadow: none;
   border-color: rgba(0,255,136,0.2);
 }
+
 
 /* ========== Professional Full-Screen Loading ========== */
 .loading-screen {
@@ -1892,6 +1917,7 @@ button.secondary {
   letter-spacing: 0.06em;
 }
 
+
 /* ========== Global bold typography (JVault style) ========== */
 body,
 .app,
@@ -1962,6 +1988,7 @@ label,
   font-weight: 800 !important;
   letter-spacing: -0.01em;
 }
+
 
 /* ===== ATF Miner UI (gold luxury — no emerald override) ===== */
 :root {
@@ -2069,6 +2096,7 @@ label,
 
 /* Hide old logo-platform completely */
 .logo-platform,
+.logo-platform-beam,
 .logo-platform-base,
 .logo-platform-glow,
 .logo-ring { display: none !important; }
@@ -2379,7 +2407,7 @@ body {
 
 /* Hide any leftover green crystal loading rocks */
 .ls-crystal, .tap-rock, .tap-glow-core, .logo-platform,
- .logo-platform-base, .logo-platform-glow {
+.logo-platform-beam, .logo-platform-base, .logo-platform-glow {
   display: none !important;
 }
 
@@ -2410,6 +2438,7 @@ body {
 .tap-rock,
 .tap-glow-core,
 .logo-platform,
+.logo-platform-beam,
 .logo-platform-base,
 .logo-platform-glow,
 .logo-ring,
@@ -2699,7 +2728,7 @@ body {
 
 /* Kill any remaining green particle / crystal visuals */
 .ls-crystal, .tap-rock, .tap-glow-core, .ls-platform,
-.logo-platform, .logo-platform-base, .logo-platform-glow {
+.logo-platform, .logo-platform-base, .logo-platform-beam, .logo-platform-glow {
   display: none !important;
   visibility: hidden !important;
   opacity: 0 !important;
@@ -3130,6 +3159,7 @@ body {
 .atf-coin-crown-img,
 .logo-platform,
 .logo-platform-base,
+.logo-platform-beam,
 .logo-platform-glow,
 .logo-ring,
 .ring-inner,
@@ -3217,7 +3247,7 @@ body {
   color: #e0ffe8 !important;
 }
 
-/* ========== ASSETS single crown ========== */
+/* ========== ASSETS single crown + platform beam ========== */
 
 /* Hide old 3 small crowns */
 .assets-crown-img,
@@ -3266,8 +3296,34 @@ body {
   margin-top: 6px !important;
 }
 
+/* Vertical lighting beam from platform up to coin */
+.platform-beam {
+  position: absolute !important;
+  left: 50% !important;
+  top: 22% !important;
+  transform: translateX(-50%) !important;
+  width: 48px !important;
+  height: 140px !important;
+  background: linear-gradient(180deg,
+    rgba(0, 255, 200, 0.0) 0%,
+    rgba(0, 255, 180, 0.55) 20%,
+    rgba(0, 255, 160, 0.85) 50%,
+    rgba(0, 200, 120, 0.4) 80%,
+    transparent 100%) !important;
+  filter: blur(6px) !important;
+  border-radius: 50% !important;
+  opacity: 0.9 !important;
+  z-index: 3 !important;
+  pointer-events: none !important;
+  animation: beamPulse 2.4s ease-in-out infinite !important;
+  box-shadow: 0 0 28px rgba(0, 255, 180, 0.5) !important;
+}
+@keyframes beamPulse {
+  0%, 100% { opacity: 0.7; transform: translateX(-50%) scaleY(1) scaleX(1); }
+  50% { opacity: 1; transform: translateX(-50%) scaleY(1.08) scaleX(1.05); }
+}
 
-/* Keep platform + coin positioning clean */
+/* Keep platform + coin positioning clean with beam */
 .hype-platform-img {
   top: 58% !important;
 }
@@ -3412,109 +3468,4 @@ body {
 .assets-card.atf-assets {
   padding-top: 42px !important;
   overflow: visible !important;
-}
-
-/* Completely remove any beam / energy beam elements */
-.platform-beam,
-.platform-beam-img,
-.logo-platform-beam {
-  display: none !important;
-  visibility: hidden !important;
-  opacity: 0 !important;
-  width: 0 !important;
-  height: 0 !important;
-  pointer-events: none !important;
-}
-
-/* ========== JVault-style Task cards ========== */
-.task-card.jv-task {
-  padding: 12px 14px !important;
-  margin-bottom: 10px !important;
-  background: rgba(0, 22, 14, 0.92) !important;
-  border: 1px solid rgba(0, 255, 136, 0.22) !important;
-  border-radius: 16px !important;
-}
-.jv-task-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-}
-.jv-task-icon {
-  flex-shrink: 0;
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  background: rgba(0, 255, 136, 0.1);
-  border: 1px solid rgba(0, 255, 136, 0.28);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #00ff88;
-}
-.jv-task-body {
-  flex: 1;
-  min-width: 0;
-}
-.jv-task-title {
-  font-weight: 800;
-  font-size: 0.92rem;
-  color: #e8fff0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.jv-task-reward {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: #f0d878;
-  margin-top: 3px;
-}
-.jv-task-action {
-  flex-shrink: 0;
-}
-.jv-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 8px 14px;
-  border-radius: 12px;
-  font-weight: 800;
-  font-size: 0.8rem;
-  border: none;
-  cursor: pointer;
-  white-space: nowrap;
-  min-width: 88px;
-  transition: transform 0.1s, opacity 0.1s;
-}
-.jv-btn:active { transform: scale(0.96); }
-.jv-btn-join {
-  background: linear-gradient(135deg, #00cc6a, #00ff88);
-  color: #002211;
-  box-shadow: 0 0 14px rgba(0, 255, 136, 0.35);
-}
-.jv-btn-claim {
-  background: linear-gradient(135deg, #c9a227, #ffe566);
-  color: #1a1200;
-  box-shadow: 0 0 14px rgba(255, 200, 60, 0.4);
-}
-.jv-btn-done {
-  background: rgba(0, 255, 136, 0.12);
-  color: #00ff88;
-  border: 1px solid rgba(0, 255, 136, 0.4);
-  box-shadow: none;
-  cursor: default;
-}
-.task-done-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 12px;
-  border-radius: 12px;
-  background: rgba(0, 255, 136, 0.12);
-  border: 1px solid rgba(0, 255, 136, 0.35);
-  color: #00ff88;
-  font-weight: 800;
-  font-size: 0.78rem;
 }
