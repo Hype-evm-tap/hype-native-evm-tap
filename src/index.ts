@@ -130,6 +130,9 @@ async function verifyTelegramInitData(raw: string, botToken: string): Promise<Tg
     const hash = params.get('hash');
     if (!hash || !/^[a-f0-9]{64}$/i.test(hash)) return null;
     params.delete('hash');
+    // `signature` is for Telegram's third-party Ed25519 validation, not bot-token HMAC.
+    // It must be excluded from the HMAC data-check string when present.
+    params.delete('signature');
     const authDate = Number(params.get('auth_date'));
     if (!Number.isFinite(authDate) || authDate > nowSec() + 60 || nowSec() - authDate > 86400) return null;
     const dataCheckString = [...params.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}=${v}`).join('\n');
