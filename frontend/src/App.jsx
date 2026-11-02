@@ -4,8 +4,8 @@ const tg = window.Telegram?.WebApp;
 if (tg) {
   tg.ready();
   tg.expand();
-  tg.setHeaderColor('#020a06');
-  tg.setBackgroundColor('#020a06');
+  tg.setHeaderColor('#0a0804');
+  tg.setBackgroundColor('#050403');
 }
 
 const API = ''; // same origin when deployed on CF
@@ -228,6 +228,8 @@ export default function App() {
   const [dayLow, setDayLow] = useState(0);
   const [chartLoading, setChartLoading] = useState(true);
   const [selectedMinerLevel, setSelectedMinerLevel] = useState(1);
+  const [isOnline, setIsOnline] = useState(false); // start OFFLINE until verified
+  const [onlineChecked, setOnlineChecked] = useState(false);
 
   // Admin
   const [adminTab, setAdminTab] = useState('stats');
@@ -487,6 +489,28 @@ const [broadcastSending, setBroadcastSending] = useState(false);
     energyRef.current = energyLeft;
   }, [energyLeft]);
 
+  // Online / Offline status verification (ATF style: show OFFLINE until verified)
+  useEffect(() => {
+    const check = () => {
+      const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      const visible = typeof document !== 'undefined' ? document.visibilityState === 'visible' : true;
+      const tgReady = !!(window.Telegram?.WebApp?.initData);
+      setIsOnline(online && visible && tgReady);
+      setOnlineChecked(true);
+    };
+    check();
+    window.addEventListener('online', check);
+    window.addEventListener('offline', check);
+    document.addEventListener('visibilitychange', check);
+    const iv = setInterval(check, 5000);
+    return () => {
+      window.removeEventListener('online', check);
+      window.removeEventListener('offline', check);
+      document.removeEventListener('visibilitychange', check);
+      clearInterval(iv);
+    };
+  }, []);
+
   // Energy countdown — ONLY renew when server cooldown (resetAt) has actually expired
   useEffect(() => {
     const maxE = config?.energy_max || 1000;
@@ -547,14 +571,18 @@ const persistWallet = async (addr) => {
       showToast('Invalid EVM address');
       return false;
     }
+    const previousAddress = connectedWallet;
+    const previousWithdrawAddress = wdWallet;
     setConnectedWallet(clean);
     setWdWallet(clean);
     const data = await api('/api/wallet', {
       method: 'POST',
-      body: JSON.stringify({ user: tg?.initDataUnsafe?.user, wallet_address: clean }),
+      body: JSON.stringify({ user: window.Telegram?.WebApp?.initDataUnsafe?.user || tg?.initDataUnsafe?.user, wallet_address: clean }),
     });
     if (data?.error) {
-      showToast(data.error);
+      setConnectedWallet(previousAddress);
+      setWdWallet(previousWithdrawAddress);
+      showToast(`Wallet connected, but server save failed: ${String(data.error).slice(0, 55)}`);
       return false;
     }
     showToast('Wallet connected');
@@ -569,7 +597,8 @@ const persistWallet = async (addr) => {
       eth = eth.providers.find((p) => p.isMetaMask) || eth.providers[0];
     }
     const accounts = await eth.request({ method: 'eth_requestAccounts' });
-    return accounts?.[0] || null;
+    if (!accounts?.[0]) throw new Error('Wallet returned no account');
+    return accounts[0];
   };
 
   /**
@@ -618,8 +647,10 @@ const persistWallet = async (addr) => {
     // chains is REQUIRED (empty optionalChains-only → "configuration not found")
     const provider = await EthereumProvider.init({
       projectId,
-      chains: [1],
-      optionalChains: [56, 999], // BSC (Binance) + Hyperliquid EVM
+      // HYPE EVM uses Hyperliquid EVM mainnet (chain ID 999).
+      // Keep Ethereum and BSC optional so multi-chain wallets can still connect.
+      chains: [999],
+      optionalChains: [1, 56],
       showQrModal: true,
       methods: [
         'eth_sendTransaction',
@@ -633,9 +664,9 @@ const persistWallet = async (addr) => {
       ],
       events: ['chainChanged', 'accountsChanged', 'disconnect', 'session_delete'],
       rpcMap: {
+        999: 'https://rpc.hyperliquid.xyz/evm',
         1: 'https://ethereum.publicnode.com',
         56: 'https://bsc-dataseed.binance.org',
-        999: 'https://rpc.hyperliquid.xyz/evm',
       },
       metadata: {
         name: 'Hype Token',
@@ -708,9 +739,9 @@ const persistWallet = async (addr) => {
         console.warn('WalletConnect failed:', e);
         const msg = e?.message || '';
         if (msg.includes('Project ID') || msg.includes('WALLETCONNECT')) {
-          showToast('Project ID not found — deploy /api/config route');
+          showToast('WalletConnect Project ID missing. Set VITE_WALLETCONNECT_PROJECT_ID.');
         } else if (msg.includes('Failed to fetch') || msg.includes('Cannot find module') || msg.includes('@walletconnect')) {
-          showToast('Install: npm i @walletconnect/ethereum-provider');
+          showToast('WalletConnect package missing or network blocked. Install @walletconnect/ethereum-provider.');
         } else if (msg.includes('User rejected') || msg.includes('denied') || msg.includes('cancelled')) {
           showToast('Connection cancelled');
         } else {
@@ -1222,7 +1253,7 @@ user: tg?.initDataUnsafe?.user,
         body: JSON.stringify({ message: msg, photo: photo || undefined }),
       });
       if (data.success) {
-        showToast(`✅ Sent to ${data.sent}/${data.total || data.sent} users` + (data.failed ? ` (${data.failed} failed)` : ''));
+        showToast(`Sent to ${data.sent}/${data.total || data.sent} users` + (data.failed ? ` (${data.failed} failed)` : ''));
         setBroadcastMsg('');
         setBroadcastPhoto('');
       } else {
@@ -1291,7 +1322,9 @@ user: tg?.initDataUnsafe?.user,
           </div>
           <div className="header-badges">
             <button type="button" className="badge gold-lvl level-open-btn" onClick={() => setTab('miner')}><Icon name="crown" size={12} /> Lvl {Number(user?.level || 1)} <span className="level-open-cue">›</span></button>
-            <span className="badge online"><Icon name="zap" size={12} /> ONLINE</span>
+            <span className={`badge ${onlineChecked && isOnline ? 'online' : 'offline'}`}>
+              <Icon name="zap" size={12} /> {onlineChecked ? (isOnline ? 'ONLINE' : 'OFFLINE') : 'OFFLINE'}
+            </span>
           </div>
           {price > 0 && (
             <button type="button" className="lvl-progress level-progress-open" onClick={() => setTab('miner')}>
@@ -1325,6 +1358,12 @@ user: tg?.initDataUnsafe?.user,
       {tab === 'tap' && (
         <>
           <div className="assets-card">
+            {/* 3D-style floating crowns above Assets (ATF) */}
+            <div className="assets-crowns" aria-hidden="true">
+              <span className="assets-crown c1"><Icon name="crown" size={18} /></span>
+              <span className="assets-crown c2"><Icon name="crown" size={14} /></span>
+              <span className="assets-crown c3"><Icon name="crown" size={16} /></span>
+            </div>
             <div className="assets-label">ASSETS</div>
             <div className="balance-row">
               <img src="/hype-logo.png" alt="HYPE" className="balance-icon" />
@@ -1360,17 +1399,14 @@ user: tg?.initDataUnsafe?.user,
               role="button"
               aria-label="Tap to mine"
             >
-              {/* Coin floating above solid plate */}
-              <img src="/hype-logo.png" alt="HYPE Logo" className="logo-img" draggable={false} />
-
-              {/* Solid multi-tier plate under coin */}
-              <div className="logo-platform">
-                <div className="logo-platform-beam" />
-                <div className="logo-platform-base" />
-                <div className="logo-platform-glow" />
-                <div className="logo-ring ring-inner" />
-                <div className="logo-ring ring-mid" />
-                <div className="logo-ring ring-outer" />
+              {/* ATF-style floating golden coin (no bottom plate) */}
+              <div className="atf-coin-wrap">
+                <div className="atf-coin-ring ring-outer" />
+                <div className="atf-coin-ring ring-mid" />
+                <div className="atf-coin-ring ring-inner" />
+                <div className="atf-coin-glow" />
+                <img src="/hype-logo.png" alt="HYPE Logo" className="logo-img" draggable={false} />
+                <div className="atf-coin-crown"><Icon name="crown" size={22} /></div>
               </div>
 
               {coins.map((c) => (
@@ -1617,21 +1653,69 @@ user: tg?.initDataUnsafe?.user,
             <div className="miner-energy-foot"><span><i /> Live energy</span><span>{energyLeft <= 0 ? `Recharge ${formatTime(waitSec)}` : 'Regenerates on cooldown'}</span></div>
           </div>
 
-          <div className="miner-levels-head"><div><span className="miner-eyebrow">PROGRESSION ROADMAP</span><h2>Explore <span>1–1000</span></h2></div><span className="miner-level-count">1000 LEVELS</span></div>
-          <div className="miner-level-note">Level requirements shown here are visual roadmap estimates. Your existing server-side mining and reward rules remain unchanged.</div>
-          <div className="miner-level-grid">
-            {Array.from({length:1000}, (_, i) => i + 1).map((level) => {
+          {/* ATF-style Miner Store Levels 1–100 */}
+          <div className="miner-levels-head">
+            <div>
+              <span className="miner-eyebrow">MINER STORE</span>
+              <h2>Levels <span>1–100</span></h2>
+            </div>
+            <span className="miner-level-count">100 LEVELS</span>
+          </div>
+          <div className="miner-level-note">ATF-style machine cards. Active level is unlocked. Higher levels require more HYPE (visual roadmap — server rules unchanged).</div>
+
+          <div className="atf-level-grid">
+            {Array.from({ length: 100 }, (_, i) => i + 1).map((level) => {
               const current = Number(user?.level || 1);
-              const state = level < current ? 'complete' : level === current ? 'current' : 'locked';
-              return <button key={level} type="button" className={`miner-level-tile ${state} ${selectedMinerLevel === level ? 'selected' : ''}`} onClick={() => setSelectedMinerLevel(level)} aria-pressed={selectedMinerLevel === level}>
-                <span>{level < current ? '✓' : level === current ? '◆' : '◇'}</span><b>{level}</b>
-              </button>;
+              const isActive = level === current;
+              const isUnlocked = level <= current;
+              // Approximate ATF-style pricing & speed curve
+              const priceUsd = (0.02 + level * 0.0015 + Math.pow(level / 40, 1.6) * 0.01).toFixed(4);
+              const speedTh = (0.18 + level * 0.0045 + Math.pow(level / 50, 1.4) * 0.08).toFixed(2);
+              const needHype = Math.max(0, Math.round((level - current) * 8 + level * 1.2));
+              let statusClass = 'locked';
+              let statusText = `NEED ${needHype} HYPE`;
+              if (isActive) { statusClass = 'active'; statusText = 'ACTIVE'; }
+              else if (isUnlocked) { statusClass = 'unlocked'; statusText = 'UNLOCKED'; }
+
+              return (
+                <button
+                  key={level}
+                  type="button"
+                  className={`atf-machine-card ${statusClass} ${selectedMinerLevel === level ? 'selected' : ''}`}
+                  onClick={() => setSelectedMinerLevel(level)}
+                >
+                  <div className="atf-machine-top">
+                    <span className="atf-lvl">Lvl {level}</span>
+                    <span className="atf-machine-icon"><Icon name="crown" size={16} /></span>
+                  </div>
+                  <div className="atf-machine-price">${priceUsd}</div>
+                  <div className="atf-machine-speed">Speed <b>{speedTh} TH/s</b></div>
+                  <div className={`atf-machine-status ${statusClass}`}>{statusText}</div>
+                </button>
+              );
             })}
           </div>
-          <div className="miner-selected-level">
-            <div><span className="miner-eyebrow">SELECTED LEVEL</span><strong>LEVEL {selectedMinerLevel}</strong></div>
-            <div className="miner-requirements"><span>⚡ {selectedMinerLevel * 10} Energy <small>Preview</small></span><span>✦ {(selectedMinerLevel * 100).toLocaleString()} Points <small>Preview</small></span></div>
-            <div className="miner-level-status">{selectedMinerLevel <= Number(user?.level || 1) ? 'Current progression reached' : 'Future level · requirements are illustrative'}</div>
+
+          <div className="miner-selected-level atf-selected">
+            <div>
+              <span className="miner-eyebrow">SELECTED MACHINE</span>
+              <strong>LEVEL {selectedMinerLevel}</strong>
+            </div>
+            <div className="miner-requirements">
+              <span>
+                <Icon name="zap" size={12} /> {(0.18 + selectedMinerLevel * 0.0045).toFixed(2)} TH/s
+                <small>Hashrate</small>
+              </span>
+              <span>
+                <Icon name="coins" size={12} /> ${(0.02 + selectedMinerLevel * 0.0015).toFixed(4)}
+                <small>Est. value</small>
+              </span>
+            </div>
+            <div className="miner-level-status">
+              {selectedMinerLevel <= Number(user?.level || 1)
+                ? 'This machine is active / unlocked'
+                : `Need ~${Math.max(0, Math.round((selectedMinerLevel - Number(user?.level || 1)) * 8))} more HYPE (illustrative)`}
+            </div>
           </div>
         </section>
       )}
