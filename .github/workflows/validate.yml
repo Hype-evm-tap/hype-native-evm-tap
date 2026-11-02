@@ -38,3 +38,13 @@ jobs:
 
       - name: Validate Worker bundle (dry run)
         run: npx wrangler deploy --dry-run
+
+      - name: Upload dependency audit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit-reports
+          path: |
+            frontend-npm-audit.json
+            worker-npm-audit.json
+          if-no-files-found: ignore
