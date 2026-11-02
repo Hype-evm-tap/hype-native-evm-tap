@@ -3469,3 +3469,80 @@ body {
   padding-top: 42px !important;
   overflow: visible !important;
 }
+
+/* Energy beam image — strictly between platform and coin */
+.platform-beam {
+  display: none !important; /* old CSS beam hide */
+}
+.platform-beam-img {
+  position: absolute !important;
+  left: 50% !important;
+  top: 28% !important;          /* starts just below the coin */
+  transform: translateX(-50%) !important;
+  width: 36px !important;
+  height: 115px !important;     /* only reaches the platform, not beyond coin */
+  object-fit: contain !important;
+  object-position: center bottom !important;
+  z-index: 4 !important;
+  pointer-events: none !important;
+  opacity: 0.95 !important;
+  filter: drop-shadow(0 0 12px rgba(0, 255, 120, 0.7));
+  animation: beamGlow 2.2s ease-in-out infinite !important;
+}
+@keyframes beamGlow {
+  0%, 100% { opacity: 0.8; filter: drop-shadow(0 0 10px rgba(0, 255, 120, 0.55)); }
+  50% { opacity: 1; filter: drop-shadow(0 0 18px rgba(0, 255, 150, 0.85)); }
+}
+
+/* Keep coin above beam, platform below */
+.atf-coin-wrap {
+  z-index: 6 !important;
+}
+.hype-platform-img {
+  z-index: 2 !important;
+  top: 58% !important;
+}
+
+/* ========== FINAL BEAM POSITION FIX ========== */
+.platform-beam-img {
+  position: absolute !important;
+  left: 50% !important;
+  top: 38% !important;                 /* starts under the coin */
+  bottom: auto !important;
+  transform: translateX(-50%) !important;
+  width: 42px !important;
+  height: 95px !important;             /* short — only fills gap to platform */
+  max-height: 100px !important;
+  object-fit: contain !important;
+  object-position: center center !important;
+  z-index: 5 !important;
+  pointer-events: none !important;
+  opacity: 0.92 !important;
+  filter: drop-shadow(0 0 14px rgba(0, 255, 130, 0.75));
+  animation: beamGlow 2.2s ease-in-out infinite !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Ensure coin is clearly above the beam */
+.atf-coin-wrap {
+  position: relative !important;
+  z-index: 8 !important;
+  margin-bottom: 0 !important;
+}
+.hype-logo .logo-img {
+  position: relative !important;
+  z-index: 9 !important;
+}
+
+/* Platform stays below everything */
+.hype-platform-img {
+  position: absolute !important;
+  left: 50% !important;
+  top: 62% !important;
+  transform: translateX(-50%) !important;
+  width: 230px !important;
+  max-width: 80vw !important;
+  z-index: 3 !important;
+  pointer-events: none !important;
+}
