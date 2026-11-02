@@ -32,40 +32,40 @@ body {
 
 .app {
   min-height: 100vh;
+  /* Full ATF-style luxury dark gold hall background — replaces all previous green crystal/rock */
   background:
-    /* green hype crystal shards */
-    radial-gradient(ellipse 120px 80px at 12% 18%, rgba(0, 255, 136, 0.12) 0%, transparent 70%),
-    radial-gradient(ellipse 90px 140px at 88% 25%, rgba(0, 200, 100, 0.1) 0%, transparent 70%),
-    radial-gradient(ellipse 100px 100px at 75% 70%, rgba(0, 255, 136, 0.08) 0%, transparent 70%),
-    radial-gradient(ellipse 80px 120px at 15% 75%, rgba(0, 180, 90, 0.1) 0%, transparent 70%),
-    radial-gradient(ellipse at 50% 15%, rgba(0, 90, 45, 0.4) 0%, transparent 55%),
-    radial-gradient(ellipse at 20% 85%, rgba(0, 60, 30, 0.25) 0%, transparent 45%),
-    linear-gradient(180deg, #03150c 0%, #020a06 40%, #010705 100%);
+    radial-gradient(ellipse 180px 120px at 50% 8%, rgba(212, 175, 55, 0.18) 0%, transparent 70%),
+    radial-gradient(ellipse 100px 160px at 8% 40%, rgba(180, 140, 40, 0.12) 0%, transparent 65%),
+    radial-gradient(ellipse 90px 140px at 92% 45%, rgba(180, 140, 40, 0.12) 0%, transparent 65%),
+    radial-gradient(ellipse 200px 100px at 50% 95%, rgba(0, 0, 0, 0.6) 0%, transparent 60%),
+    radial-gradient(ellipse at 50% 50%, rgba(20, 14, 4, 0.4) 0%, transparent 70%),
+    linear-gradient(180deg, #0a0804 0%, #050403 35%, #020201 70%, #000000 100%);
   padding-bottom: 90px;
   position: relative;
   overflow-x: hidden;
 }
 
-/* Decorative pillars effect on sides */
+/* ATF golden pillars on sides */
 .app::before,
 .app::after {
   content: '';
   position: fixed;
   top: 0;
   bottom: 0;
-  width: 40px;
+  width: 28px;
   pointer-events: none;
   z-index: 1;
-  opacity: 0.35;
-  background: linear-gradient(180deg, 
+  opacity: 0.55;
+  background: linear-gradient(180deg,
     transparent 0%,
-    rgba(212, 175, 55, 0.15) 20%,
-    rgba(0, 255, 136, 0.1) 50%,
-    rgba(212, 175, 55, 0.15) 80%,
+    rgba(212, 175, 55, 0.25) 15%,
+    rgba(255, 215, 100, 0.12) 40%,
+    rgba(212, 175, 55, 0.2) 70%,
     transparent 100%);
+  box-shadow: inset 0 0 20px rgba(212, 175, 55, 0.15);
 }
-.app::before { left: 0; border-right: 1px solid rgba(212,175,55,0.2); }
-.app::after { right: 0; border-left: 1px solid rgba(212,175,55,0.2); }
+.app::before { left: 0; border-right: 1px solid rgba(212, 175, 55, 0.35); }
+.app::after { right: 0; border-left: 1px solid rgba(212, 175, 55, 0.35); }
 
 /* ========== HEADER ========== */
 .header {
@@ -1983,99 +1983,444 @@ label,
 }
 
 
-/* ===== HYPE Emerald Miner UI refresh (presentation only) ===== */
-:root { --gold: #39d98a; --gold-light: #a4f4c9; --gold-bright: #d0ffe5; --gold-glow: 0 0 14px rgba(57,217,138,.16); }
-.app::before,.app::after { opacity:.16; background:linear-gradient(180deg,transparent,rgba(57,217,138,.07),transparent); border-color:rgba(57,217,138,.10); }
-.svg-icon { filter: drop-shadow(0 0 2px rgba(57,217,138,.22)); }
-.level-open-btn { cursor:pointer; font:inherit; }
-.level-open-cue { font-size:1.1em; margin-left:3px; }
-.level-progress-open { cursor:pointer; font:inherit; text-align:left; }
-.level-progress-open:active,.level-open-btn:active { transform:scale(.98); }
-.miner-page { padding:16px 14px 28px; position:relative; z-index:2; color:#e8fff2; }
-.miner-heading-row { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin:4px 2px 16px; }
-.miner-eyebrow { display:block; color:rgba(130,230,177,.68); font-size:.62rem; font-weight:800; letter-spacing:.16em; }
-.miner-heading-row h1,.miner-levels-head h2 { margin:5px 0 4px; font-size:1.55rem; letter-spacing:-.04em; color:#f1fff7; }
-.miner-heading-row h1 span,.miner-levels-head h2 span { color:#48d994; }
-.miner-heading-row p { margin:0; max-width:245px; color:rgba(202,232,215,.58); font-size:.7rem; line-height:1.5; }
-.miner-back-btn { flex-shrink:0; border:1px solid rgba(67,211,139,.3); color:#8de9b7; background:rgba(26,91,59,.22); border-radius:20px; padding:8px 12px; font-weight:800; font-size:.7rem; }
-.miner-market-card,.miner-energy-card { border:1px solid rgba(89,202,143,.22); border-radius:19px; background:linear-gradient(145deg,rgba(13,43,29,.94),rgba(4,19,13,.97)); box-shadow:0 8px 24px rgba(0,0,0,.2),inset 0 1px rgba(255,255,255,.035); padding:14px; margin-bottom:13px; }
-.miner-market-head { display:flex; justify-content:space-between; align-items:center; color:#dfffee; font-size:.77rem; font-weight:800; }
-.miner-market-head>div { display:flex; align-items:center; gap:7px; }
-.miner-market-source { color:rgba(133,215,171,.48); font-size:.56rem; letter-spacing:.12em; }
-.miner-price-line { display:flex; align-items:baseline; gap:10px; margin:9px 0 10px; }
-.miner-price-line strong { font-size:1.65rem; letter-spacing:-.04em; color:#f2fff7; }
-.miner-intervals { justify-content:flex-end; margin-bottom:8px; }
-.miner-chart-area { height:132px; overflow:hidden; border-radius:12px; background:linear-gradient(180deg,rgba(1,15,9,.8),rgba(8,36,22,.42)); border:1px solid rgba(90,210,145,.1); }
-.miner-market-foot { display:flex; justify-content:space-between; gap:8px; padding:10px 2px 0; color:rgba(142,210,171,.55); font-size:.55rem; letter-spacing:.08em; }
-.miner-market-foot b { display:block; margin-top:3px; color:#c9f7dc; font-size:.7rem; letter-spacing:0; }
-.miner-overview-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:13px; }
-.miner-stat-card { padding:12px; border:1px solid rgba(86,199,139,.16); border-radius:15px; background:rgba(7,30,19,.78); }
-.miner-stat-card span { display:block; color:rgba(144,214,174,.55); font-size:.57rem; font-weight:800; letter-spacing:.1em; }
-.miner-stat-card strong { display:block; margin:5px 0 2px; color:#e7fff0; font-size:1.18rem; }
-.miner-stat-card small { color:rgba(178,218,193,.48); font-size:.62rem; }
-.miner-energy-card { display:grid; grid-template-columns:1fr 76px; align-items:center; min-height:148px; position:relative; overflow:hidden; }
-.miner-energy-copy strong { display:block; margin:6px 0 4px; font-size:1rem; }
-.miner-energy-copy small { color:rgba(190,225,203,.62); font-size:.67rem; }
-.energy-cylinder { height:112px; width:48px; justify-self:center; position:relative; overflow:hidden; border:1.5px solid rgba(168,255,211,.55); border-radius:17px 17px 13px 13px; background:linear-gradient(90deg,rgba(255,255,255,.13),rgba(255,255,255,.015) 35%,rgba(255,255,255,.10) 78%,rgba(255,255,255,.025)); box-shadow:inset 4px 0 8px rgba(255,255,255,.07),inset -4px 0 8px rgba(0,0,0,.22),0 0 12px rgba(50,207,129,.09); }
-.energy-cylinder::before { content:''; position:absolute; top:-4px; left:5px; right:5px; height:8px; border:1px solid rgba(190,255,220,.45); border-radius:50%; z-index:3; }
-.energy-cylinder-liquid { position:absolute; bottom:0; left:2px; right:2px; background:linear-gradient(180deg,rgba(106,239,166,.78),rgba(24,154,91,.88)); border-radius:0 0 12px 12px; transition:height .5s ease; box-shadow:0 -3px 12px rgba(50,220,135,.16); }
-.energy-cylinder-liquid::before { content:''; position:absolute; top:-4px; left:0; right:0; height:8px; border-radius:50%; background:rgba(148,255,192,.55); }
-.energy-cylinder-glass { position:absolute; inset:8px 7px; border-left:2px solid rgba(255,255,255,.22); border-radius:10px; pointer-events:none; }
-.energy-cylinder>span { position:absolute; inset:0; display:grid; place-items:center; z-index:4; color:#f1fff6; font-size:.75rem; font-weight:900; text-shadow:0 1px 4px #001b0d; }
-.miner-energy-foot { grid-column:1/-1; display:flex; justify-content:space-between; border-top:1px solid rgba(130,220,170,.1); padding-top:10px; margin-top:7px; color:rgba(174,221,193,.58); font-size:.6rem; }
-.miner-energy-foot i { display:inline-block; width:6px; height:6px; margin-right:5px; border-radius:50%; background:#50d995; }
-.miner-levels-head { display:flex; align-items:end; justify-content:space-between; margin:20px 2px 8px; }
-.miner-levels-head h2 { font-size:1.25rem; margin-bottom:0; }
-.miner-level-count { border:1px solid rgba(75,205,137,.2); border-radius:20px; padding:5px 8px; color:#8cddb0; font-size:.57rem; font-weight:900; letter-spacing:.08em; }
-.miner-level-note { margin:0 2px 10px; color:rgba(179,211,190,.45); font-size:.58rem; line-height:1.45; }
-.miner-level-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px; max-height:310px; overflow-y:auto; padding:2px 2px 10px; scrollbar-width:thin; scrollbar-color:rgba(69,193,128,.3) transparent; }
-.miner-level-tile { min-height:49px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; border:1px solid rgba(105,160,127,.13); border-radius:10px; background:rgba(8,28,18,.8); color:rgba(178,214,191,.56); }
-.miner-level-tile span { font-size:.58rem; opacity:.7; }
-.miner-level-tile b { font-size:.72rem; }
-.miner-level-tile.current { border-color:rgba(74,219,143,.55); color:#baffd5; background:rgba(24,102,62,.24); }
-.miner-level-tile.complete { color:#65c992; }
-.miner-level-tile.selected { outline:1px solid #64e5a0; background:rgba(44,153,93,.27); box-shadow:0 0 9px rgba(61,213,137,.12); }
-.miner-selected-level { margin:10px 0 8px; padding:14px; border:1px solid rgba(80,205,137,.23); border-radius:16px; background:linear-gradient(135deg,rgba(14,55,34,.76),rgba(5,23,14,.95)); }
-.miner-selected-level>div:first-child { display:flex; justify-content:space-between; align-items:center; }
-.miner-selected-level>div:first-child strong { color:#bfffd7; font-size:.8rem; }
-.miner-requirements { display:flex; gap:8px; margin-top:12px; }
-.miner-requirements>span { flex:1; padding:9px 7px; border-radius:10px; background:rgba(0,0,0,.2); color:#c5f4d6; font-size:.65rem; font-weight:800; }
-.miner-requirements small { display:block; margin-top:3px; color:rgba(183,216,195,.42); font-size:.53rem; font-weight:600; }
-.miner-level-status { margin-top:10px; color:rgba(164,216,184,.58); font-size:.6rem; }
-@media (max-width:360px) { .miner-page{padding-left:10px;padding-right:10px}.miner-level-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.miner-market-foot{font-size:.5rem}.miner-price-line strong{font-size:1.4rem} }
+/* ===== ATF Miner UI (gold luxury — no emerald override) ===== */
+:root {
+  --gold: #d4af37;
+  --gold-light: #f0d878;
+  --gold-bright: #ffe566;
+  --gold-glow: 0 0 20px rgba(212, 175, 55, 0.5);
+}
+.app::before, .app::after {
+  opacity: 0.55 !important;
+  background: linear-gradient(180deg, transparent 0%, rgba(212,175,55,0.25) 15%, rgba(255,215,100,0.12) 40%, rgba(212,175,55,0.2) 70%, transparent 100%) !important;
+  border-color: rgba(212, 175, 55, 0.35) !important;
+}
+.svg-icon { filter: drop-shadow(0 0 3px rgba(240, 216, 120, 0.35)); }
+.level-open-btn { cursor: pointer; font: inherit; }
+.level-open-cue { font-size: 1.1em; margin-left: 3px; }
+.level-progress-open { cursor: pointer; font: inherit; text-align: left; }
+.level-progress-open:active, .level-open-btn:active { transform: scale(0.98); }
+.miner-page { padding: 16px 14px 28px; position: relative; z-index: 2; color: #f5ecd0; }
+.miner-heading-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin: 4px 2px 16px; }
+.miner-eyebrow { display: block; color: rgba(240, 216, 120, 0.7); font-size: 0.62rem; font-weight: 800; letter-spacing: 0.16em; }
+.miner-heading-row h1, .miner-levels-head h2 { margin: 5px 0 4px; font-size: 1.55rem; letter-spacing: -0.04em; color: #fff8e0; }
+.miner-heading-row h1 span, .miner-levels-head h2 span { color: #f0d878; }
+.miner-heading-row p { margin: 0; max-width: 245px; color: rgba(220, 200, 150, 0.55); font-size: 0.7rem; line-height: 1.5; }
+.miner-back-btn { flex-shrink: 0; border: 1px solid rgba(212, 175, 55, 0.4); color: #f0d878; background: rgba(40, 30, 10, 0.45); border-radius: 20px; padding: 8px 12px; font-weight: 800; font-size: 0.7rem; }
+.miner-market-card, .miner-energy-card { border: 1px solid rgba(212, 175, 55, 0.28); border-radius: 19px; background: linear-gradient(145deg, rgba(28, 22, 8, 0.95), rgba(8, 6, 2, 0.97)); box-shadow: 0 8px 24px rgba(0,0,0,0.35), inset 0 1px rgba(255,220,100,0.06); padding: 14px; margin-bottom: 13px; }
+.miner-market-head { display: flex; justify-content: space-between; align-items: center; color: #f5ecd0; font-size: 0.77rem; font-weight: 800; }
+.miner-market-head > div { display: flex; align-items: center; gap: 7px; }
+.miner-market-source { color: rgba(200, 170, 90, 0.55); font-size: 0.56rem; letter-spacing: 0.12em; }
+.miner-price-line { display: flex; align-items: baseline; gap: 10px; margin: 9px 0 10px; }
+.miner-price-line strong { font-size: 1.65rem; letter-spacing: -0.04em; color: #fff8e0; }
+.miner-intervals { justify-content: flex-end; margin-bottom: 8px; }
+.miner-chart-area { height: 132px; overflow: hidden; border-radius: 12px; background: linear-gradient(180deg, rgba(10, 8, 3, 0.9), rgba(25, 18, 6, 0.5)); border: 1px solid rgba(212, 175, 55, 0.15); }
+.miner-market-foot { display: flex; justify-content: space-between; gap: 8px; padding: 10px 2px 0; color: rgba(200, 170, 90, 0.55); font-size: 0.55rem; letter-spacing: 0.08em; }
+.miner-market-foot b { display: block; margin-top: 3px; color: #f0d878; font-size: 0.7rem; letter-spacing: 0; }
+.miner-overview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 13px; }
+.miner-stat-card { padding: 12px; border: 1px solid rgba(212, 175, 55, 0.22); border-radius: 15px; background: rgba(20, 15, 5, 0.85); }
+.miner-stat-card span { display: block; color: rgba(200, 170, 90, 0.6); font-size: 0.57rem; font-weight: 800; letter-spacing: 0.1em; }
+.miner-stat-card strong { display: block; margin: 5px 0 2px; color: #fff8e0; font-size: 1.18rem; }
+.miner-stat-card small { color: rgba(200, 180, 120, 0.5); font-size: 0.62rem; }
+.miner-energy-card { display: grid; grid-template-columns: 1fr 76px; align-items: center; min-height: 148px; position: relative; overflow: hidden; }
+.miner-energy-copy strong { display: block; margin: 6px 0 4px; font-size: 1rem; color: #fff8e0; }
+.miner-energy-copy small { color: rgba(220, 200, 140, 0.65); font-size: 0.67rem; }
+.energy-cylinder { height: 112px; width: 48px; justify-self: center; position: relative; overflow: hidden; border: 1.5px solid rgba(240, 216, 120, 0.55); border-radius: 17px 17px 13px 13px; background: linear-gradient(90deg, rgba(255,255,255,0.1), rgba(255,255,255,0.02) 35%, rgba(255,255,255,0.08) 78%, rgba(255,255,255,0.02)); box-shadow: inset 4px 0 8px rgba(255,255,255,0.06), inset -4px 0 8px rgba(0,0,0,0.3), 0 0 14px rgba(212,175,55,0.15); }
+.energy-cylinder::before { content: ''; position: absolute; top: -4px; left: 5px; right: 5px; height: 8px; border: 1px solid rgba(240, 216, 120, 0.5); border-radius: 50%; z-index: 3; }
+.energy-cylinder-liquid { position: absolute; bottom: 0; left: 2px; right: 2px; background: linear-gradient(180deg, rgba(240, 216, 120, 0.85), rgba(180, 140, 40, 0.9)); border-radius: 0 0 12px 12px; transition: height 0.5s ease; box-shadow: 0 -3px 12px rgba(255, 200, 60, 0.25); }
+.energy-cylinder-liquid::before { content: ''; position: absolute; top: -4px; left: 0; right: 0; height: 8px; border-radius: 50%; background: rgba(255, 230, 150, 0.6); }
+.energy-cylinder-glass { position: absolute; inset: 8px 7px; border-left: 2px solid rgba(255,255,255,0.18); border-radius: 10px; pointer-events: none; }
+.energy-cylinder > span { position: absolute; inset: 0; display: grid; place-items: center; z-index: 4; color: #fff8e0; font-size: 0.75rem; font-weight: 900; text-shadow: 0 1px 4px #1a1000; }
+.miner-energy-foot { grid-column: 1 / -1; display: flex; justify-content: space-between; border-top: 1px solid rgba(212, 175, 55, 0.15); padding-top: 10px; margin-top: 7px; color: rgba(200, 170, 90, 0.6); font-size: 0.6rem; }
+.miner-energy-foot i { display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: #f0d878; box-shadow: 0 0 6px rgba(240, 216, 120, 0.6); }
+.miner-levels-head { display: flex; align-items: end; justify-content: space-between; margin: 20px 2px 8px; }
+.miner-levels-head h2 { font-size: 1.25rem; margin-bottom: 0; }
+.miner-level-count { border: 1px solid rgba(212, 175, 55, 0.35); border-radius: 20px; padding: 5px 8px; color: #f0d878; font-size: 0.57rem; font-weight: 900; letter-spacing: 0.08em; }
+.miner-level-note { margin: 0 2px 10px; color: rgba(200, 180, 120, 0.5); font-size: 0.58rem; line-height: 1.45; }
+.miner-level-grid { display: none; } /* replaced by .atf-level-grid */
+.miner-level-tile { display: none; }
+.miner-selected-level { margin: 10px 0 8px; padding: 14px; border: 1px solid rgba(212, 175, 55, 0.35); border-radius: 16px; background: linear-gradient(135deg, rgba(30, 22, 8, 0.85), rgba(10, 8, 3, 0.95)); }
+.miner-selected-level > div:first-child { display: flex; justify-content: space-between; align-items: center; }
+.miner-selected-level > div:first-child strong { color: #f0d878; font-size: 0.8rem; }
+.miner-requirements { display: flex; gap: 8px; margin-top: 12px; }
+.miner-requirements > span { flex: 1; padding: 9px 7px; border-radius: 10px; background: rgba(0, 0, 0, 0.25); color: #f5ecd0; font-size: 0.65rem; font-weight: 800; }
+.miner-requirements small { display: block; margin-top: 3px; color: rgba(200, 170, 90, 0.5); font-size: 0.53rem; font-weight: 600; }
+.miner-level-status { margin-top: 10px; color: rgba(200, 170, 90, 0.6); font-size: 0.6rem; }
+@media (max-width: 360px) {
+  .miner-page { padding-left: 10px; padding-right: 10px; }
+  .miner-market-foot { font-size: 0.5rem; }
+  .miner-price-line strong { font-size: 1.4rem; }
+}
 
+/* ========== ATF STYLE OVERRIDES (full replace) ========== */
 
-/* ===== ATF-inspired Miner Level progression ===== */
-.miner-level-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0 10px}
-.miner-level-summary>div{padding:11px 9px;border:1px solid rgba(83,218,145,.19);border-radius:13px;background:linear-gradient(145deg,rgba(14,54,34,.76),rgba(4,20,13,.88));box-shadow:inset 0 1px rgba(255,255,255,.035)}
-.miner-level-summary span,.miner-level-detail-grid span{display:block;color:rgba(164,218,187,.55);font-size:.53rem;font-weight:900;letter-spacing:.1em}
-.miner-level-summary strong{display:block;margin-top:5px;color:#e4fff0;font-size:1.12rem;font-weight:900}
-.miner-level-progress-track{height:7px;border-radius:10px;overflow:hidden;background:rgba(0,0,0,.42);border:1px solid rgba(87,205,139,.14);margin-bottom:15px}
-.miner-level-progress-track>span{display:block;height:100%;border-radius:10px;background:linear-gradient(90deg,#168b55,#55e99c);box-shadow:0 0 12px rgba(66,225,143,.4);transition:width .35s ease}
-.miner-level-toolbar{display:grid;gap:9px;margin-bottom:9px}
-.miner-level-search{height:39px;display:flex;align-items:center;gap:8px;padding:0 11px;border:1px solid rgba(88,211,144,.2);border-radius:11px;background:rgba(2,17,10,.8);color:#9de8bd}
-.miner-level-search>span{font-size:1.2rem}.miner-level-search input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:#eafff2;font:700 .72rem var(--font)}.miner-level-search input::placeholder{color:rgba(174,215,190,.4)}
-.miner-level-filters{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
-.miner-level-filters button{padding:8px 3px;border:1px solid rgba(93,171,125,.16);border-radius:9px;background:rgba(7,28,18,.75);color:rgba(187,221,199,.6);font:800 .61rem var(--font)}
-.miner-level-filters button.active{border-color:rgba(77,222,143,.55);background:linear-gradient(135deg,rgba(34,133,79,.42),rgba(9,55,31,.65));color:#baffd4;box-shadow:0 0 12px rgba(54,206,128,.1)}
-.miner-level-legend{display:flex;flex-wrap:wrap;gap:13px;margin:10px 2px 8px;color:rgba(178,215,190,.58);font-size:.57rem;font-weight:700}
-.miner-level-legend span{display:flex;align-items:center;gap:5px}.miner-level-legend i{width:7px;height:7px;border-radius:50%;background:#52745f}.miner-level-legend i.done{background:#4fce8b;box-shadow:0 0 7px rgba(79,206,139,.4)}.miner-level-legend i.now{background:#c5ffdc;box-shadow:0 0 8px #4bd88f}.miner-level-legend i.locked{background:#52675a}
-.miner-level-grid{grid-template-columns:repeat(5,minmax(0,1fr));max-height:350px;gap:6px;padding:5px 3px 12px;border:1px solid rgba(82,191,128,.11);border-radius:14px;background:linear-gradient(180deg,rgba(2,17,10,.55),rgba(5,27,17,.35))}
-.miner-level-tile{position:relative;min-height:48px;border-radius:9px;transition:transform .15s,border-color .15s,background .15s}.miner-level-tile:active{transform:scale(.96)}
-.miner-level-tile.complete{border-color:rgba(67,191,124,.22);background:linear-gradient(145deg,rgba(17,76,46,.5),rgba(5,30,18,.8));color:#83e6ad}
-.miner-level-tile.current{border:1px solid rgba(164,255,201,.82);background:linear-gradient(145deg,rgba(53,178,105,.5),rgba(10,65,37,.9));color:#eafff1;box-shadow:0 0 13px rgba(61,218,137,.2),inset 0 0 10px rgba(111,255,170,.08)}
-.miner-level-tile.locked{color:rgba(156,187,166,.42);background:linear-gradient(145deg,rgba(12,30,20,.75),rgba(4,15,10,.9))}
-.miner-level-tile.selected{outline:1px solid #a3ffc5;outline-offset:1px;z-index:1}
-.miner-selected-level{margin-top:13px;padding:15px;border-color:rgba(77,214,139,.32);background:radial-gradient(ellipse at 100% 0,rgba(42,142,84,.2),transparent 55%),linear-gradient(145deg,rgba(12,51,31,.9),rgba(3,18,11,.98));box-shadow:inset 0 1px rgba(255,255,255,.04),0 9px 25px rgba(0,0,0,.16)}
-.miner-selected-top{display:flex;align-items:center;justify-content:space-between;gap:8px}.miner-selected-top strong{display:block;margin-top:4px;color:#e6fff0;font-size:.95rem;letter-spacing:.02em}
-.miner-state-pill{padding:5px 8px;border-radius:20px;font-size:.52rem;font-weight:900;letter-spacing:.08em;border:1px solid rgba(151,176,159,.18);color:#9db7a5;background:rgba(0,0,0,.2)}.miner-state-pill.done{color:#80e7aa;border-color:rgba(73,202,131,.3);background:rgba(30,123,72,.16)}.miner-state-pill.now{color:#c9ffdc;border-color:rgba(116,245,169,.5);background:rgba(44,160,91,.24)}
-.miner-level-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}.miner-level-detail-grid>div{padding:11px 9px;border-radius:11px;background:rgba(0,0,0,.24);border:1px solid rgba(133,206,159,.1)}.miner-level-detail-grid strong{display:block;margin-top:7px;color:#e9fff1;font-size:1.1rem}.miner-level-detail-grid small{display:block;margin-top:3px;color:rgba(166,206,180,.46);font-size:.53rem;line-height:1.35}
-.miner-level-status{padding-top:10px;border-top:1px solid rgba(122,206,154,.12);line-height:1.5}.miner-level-footnote{margin:10px 3px 0;color:rgba(163,197,175,.4);font-size:.55rem;line-height:1.5}
-@media(max-width:360px){.miner-level-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.miner-level-summary>div{padding:9px 7px}.miner-level-summary strong{font-size:1rem}}
+/* Offline badge (red) */
+.badge.offline {
+  color: #ff6b6b !important;
+  border-color: rgba(255, 80, 80, 0.55) !important;
+  background: rgba(80, 15, 15, 0.35) !important;
+  box-shadow: 0 0 10px rgba(255, 60, 60, 0.25);
+}
 
+/* Assets floating 3D crowns */
+.assets-card { position: relative; overflow: visible; }
+.assets-crowns {
+  position: absolute;
+  top: -18px;
+  left: 0;
+  right: 0;
+  height: 28px;
+  pointer-events: none;
+  z-index: 5;
+}
+.assets-crown {
+  position: absolute;
+  color: #f0d878;
+  filter: drop-shadow(0 0 8px rgba(240, 216, 120, 0.8)) drop-shadow(0 4px 6px rgba(0,0,0,0.5));
+  animation: crownFloat 3.5s ease-in-out infinite;
+}
+.assets-crown.c1 { left: 18%; top: 0; animation-delay: 0s; }
+.assets-crown.c2 { left: 48%; top: -6px; animation-delay: -1.2s; transform: scale(0.85); }
+.assets-crown.c3 { right: 16%; top: 2px; animation-delay: -2.1s; }
+@keyframes crownFloat {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-7px) rotate(4deg); }
+}
 
-/* Premium 3D gold crown above Assets */
-.assets-crown-wrap{height:58px;display:flex;align-items:flex-end;justify-content:center;margin:-12px auto 2px;position:relative;z-index:2;pointer-events:none;filter:drop-shadow(0 5px 7px rgba(218,157,28,.28))}
-.assets-golden-crown{width:76px;height:60px;overflow:visible;animation:crownFloat 3.6s ease-in-out infinite;transform-origin:50% 85%}
-@keyframes crownFloat{0%,100%{transform:translateY(0) rotate(-1deg)}50%{transform:translateY(-4px) rotate(1deg)}}
-@media(prefers-reduced-motion:reduce){.assets-golden-crown{animation:none}}
+/* Hide old logo-platform completely */
+.logo-platform,
+.logo-platform-beam,
+.logo-platform-base,
+.logo-platform-glow,
+.logo-ring { display: none !important; }
+
+/* ATF floating coin (no plate) */
+.atf-coin-wrap {
+  position: relative;
+  width: 180px;
+  height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+}
+.atf-coin-glow {
+  position: absolute;
+  inset: -20px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 200, 60, 0.45) 0%, rgba(212, 175, 55, 0.15) 40%, transparent 70%);
+  filter: blur(12px);
+  animation: atfGlow 2.8s ease-in-out infinite;
+  z-index: 0;
+}
+@keyframes atfGlow {
+  0%, 100% { opacity: 0.75; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+.atf-coin-ring {
+  position: absolute;
+  border-radius: 50%;
+  border-style: solid;
+  pointer-events: none;
+  z-index: 1;
+}
+.atf-coin-ring.ring-inner {
+  width: 140px; height: 140px;
+  border-width: 2.5px;
+  border-color: rgba(255, 220, 100, 0.85);
+  box-shadow: 0 0 18px rgba(255, 200, 60, 0.5), inset 0 0 12px rgba(255, 220, 100, 0.25);
+  animation: ringPulse 3s ease-in-out infinite;
+}
+.atf-coin-ring.ring-mid {
+  width: 165px; height: 165px;
+  border-width: 2px;
+  border-color: rgba(212, 175, 55, 0.55);
+  animation: ringPulse 3.4s ease-in-out infinite 0.3s;
+}
+.atf-coin-ring.ring-outer {
+  width: 190px; height: 190px;
+  border-width: 1.5px;
+  border-color: rgba(180, 140, 40, 0.35);
+  animation: ringPulse 3.8s ease-in-out infinite 0.6s;
+}
+.atf-coin-crown {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #f0d878;
+  filter: drop-shadow(0 0 10px rgba(240, 216, 120, 0.9));
+  z-index: 12;
+  animation: crownFloat 2.8s ease-in-out infinite;
+}
+.hype-logo .logo-img {
+  width: 120px;
+  height: 120px;
+  filter:
+    drop-shadow(0 12px 24px rgba(255, 200, 60, 0.45))
+    drop-shadow(0 4px 12px rgba(0, 0, 0, 0.7))
+    drop-shadow(0 0 20px rgba(255, 220, 100, 0.35));
+  z-index: 10;
+  position: relative;
+}
+
+/* Remove old tap rocks / green glow */
+.tap-rock, .tap-glow-core { display: none !important; }
+.tap-bg {
+  background: radial-gradient(ellipse 280px 200px at 50% 50%, rgba(212, 175, 55, 0.12) 0%, transparent 70%);
+}
+
+/* ATF machine cards grid (1-100) */
+.atf-level-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 4px 2px 12px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(212, 175, 55, 0.35) transparent;
+}
+.atf-machine-card {
+  background: linear-gradient(160deg, rgba(25, 18, 6, 0.95), rgba(8, 6, 2, 0.98));
+  border: 1.5px solid rgba(212, 175, 55, 0.28);
+  border-radius: 14px;
+  padding: 12px 10px 10px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+  color: #f0e6c8;
+  font-family: var(--font);
+}
+.atf-machine-card:active { transform: scale(0.97); }
+.atf-machine-card.selected {
+  border-color: #f0d878;
+  box-shadow: 0 0 16px rgba(240, 216, 120, 0.25);
+}
+.atf-machine-card.active {
+  border-color: rgba(0, 220, 120, 0.55);
+  background: linear-gradient(160deg, rgba(10, 40, 25, 0.9), rgba(5, 20, 12, 0.95));
+}
+.atf-machine-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.atf-lvl {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #f0d878;
+  letter-spacing: 0.04em;
+}
+.atf-machine-icon { color: #f0d878; opacity: 0.85; }
+.atf-machine-price {
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #ffe566;
+  text-shadow: 0 0 12px rgba(255, 220, 80, 0.4);
+  margin: 4px 0;
+}
+.atf-machine-speed {
+  font-size: 0.68rem;
+  color: rgba(220, 200, 140, 0.7);
+  margin-bottom: 8px;
+}
+.atf-machine-speed b { color: #f0d878; }
+.atf-machine-status {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.atf-machine-status.active {
+  background: linear-gradient(90deg, #00cc6a, #00ff88);
+  color: #002211;
+  box-shadow: 0 0 12px rgba(0, 255, 136, 0.35);
+}
+.atf-machine-status.unlocked {
+  background: rgba(212, 175, 55, 0.2);
+  color: #f0d878;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+}
+.atf-machine-status.locked {
+  background: rgba(40, 30, 10, 0.6);
+  color: rgba(200, 170, 80, 0.7);
+  border: 1px solid rgba(120, 90, 30, 0.35);
+}
+
+.atf-selected {
+  border-color: rgba(212, 175, 55, 0.4) !important;
+  background: linear-gradient(135deg, rgba(30, 22, 8, 0.9), rgba(10, 8, 3, 0.95)) !important;
+}
+
+/* Soft gold tint on header / cards for ATF feel */
+.header {
+  background: linear-gradient(180deg, rgba(18, 14, 6, 0.97) 0%, rgba(5, 4, 2, 0.7) 100%) !important;
+  border-bottom-color: rgba(212, 175, 55, 0.2) !important;
+}
+.assets-card {
+  background: linear-gradient(160deg, rgba(25, 18, 6, 0.95), rgba(8, 6, 2, 0.95)) !important;
+  box-shadow: 0 0 30px rgba(212, 175, 55, 0.18), inset 0 0 40px rgba(212, 175, 55, 0.04) !important;
+}
+.assets-card::before {
+  background: linear-gradient(135deg, #d4af37, #f0d878, #d4af37) !important;
+  opacity: 0.55 !important;
+}
+.assets-label {
+  color: #f0d878 !important;
+  border-color: rgba(212, 175, 55, 0.5) !important;
+  background: linear-gradient(90deg, #1a1408, #0a0804) !important;
+}
+
+/* Keep font Manrope / JVault style (already set) */
+/* All icons already SVG — no emoji characters used in UI text */
+
+@media (max-width: 360px) {
+  .atf-level-grid { grid-template-columns: 1fr 1fr; }
+  .atf-machine-price { font-size: 1.1rem; }
+}
+
+/* ========== FINAL ATF GOLD FORCE (beats all previous green) ========== */
+:root {
+  --gold: #d4af37 !important;
+  --gold-light: #f0d878 !important;
+  --gold-bright: #ffe566 !important;
+  --gold-glow: 0 0 20px rgba(212, 175, 55, 0.5) !important;
+  --border: rgba(212, 175, 55, 0.4) !important;
+  --glow: 0 0 25px rgba(212, 175, 55, 0.35) !important;
+  --card: rgba(18, 14, 6, 0.92) !important;
+  --bg: #050403 !important;
+}
+
+body {
+  background: #050403 !important;
+  color: #f5ecd0 !important;
+}
+
+.logo-title {
+  background: linear-gradient(90deg, #f0d878, #ffe566, #d4af37) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+.badge {
+  border-color: rgba(212, 175, 55, 0.4) !important;
+  background: rgba(40, 30, 10, 0.4) !important;
+  color: #f0d878 !important;
+}
+
+.badge.online {
+  color: #00ff88 !important;
+  border-color: rgba(0, 255, 136, 0.5) !important;
+  background: rgba(0, 40, 22, 0.45) !important;
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.35) !important;
+}
+
+.badge.offline {
+  color: #ff6b6b !important;
+  border-color: rgba(255, 80, 80, 0.55) !important;
+  background: rgba(80, 15, 15, 0.4) !important;
+  box-shadow: 0 0 10px rgba(255, 60, 60, 0.3) !important;
+}
+
+.badge.gold, .badge.gold-lvl {
+  color: #f0d878 !important;
+  border-color: rgba(212, 175, 55, 0.55) !important;
+  background: rgba(212, 175, 55, 0.15) !important;
+}
+
+.lvl-progress {
+  color: rgba(240, 216, 120, 0.8) !important;
+  background: rgba(30, 22, 8, 0.75) !important;
+  border-color: rgba(212, 175, 55, 0.3) !important;
+}
+
+.connect-wallet-btn {
+  background: linear-gradient(135deg, #c9a227, #f0d878) !important;
+  color: #1a1200 !important;
+  box-shadow: 0 0 18px rgba(212, 175, 55, 0.45) !important;
+}
+
+.uid-badge {
+  color: rgba(240, 216, 120, 0.75) !important;
+  background: rgba(25, 18, 6, 0.85) !important;
+  border-color: rgba(212, 175, 55, 0.25) !important;
+}
+
+.balance-amount {
+  text-shadow: 0 0 18px rgba(240, 216, 120, 0.55) !important;
+  color: #fff8e0 !important;
+}
+
+.balance-symbol {
+  color: #f0d878 !important;
+  text-shadow: 0 0 10px rgba(240, 216, 120, 0.45) !important;
+}
+
+.balance-icon {
+  filter: drop-shadow(0 0 8px rgba(240, 216, 120, 0.55)) !important;
+}
+
+.earned-chip {
+  background: rgba(212, 175, 55, 0.12) !important;
+  border-color: rgba(212, 175, 55, 0.3) !important;
+  color: #f0d878 !important;
+}
+
+/* Bottom nav ATF gold */
+.bottom-nav {
+  background: linear-gradient(0deg, rgba(10, 8, 3, 0.98), rgba(18, 14, 6, 0.96)) !important;
+  border-top: 1px solid rgba(212, 175, 55, 0.25) !important;
+}
+
+.nav-item.active {
+  color: #f0d878 !important;
+  background: rgba(212, 175, 55, 0.12) !important;
+  box-shadow: 0 0 12px rgba(212, 175, 55, 0.2) !important;
+}
+
+.nav-item {
+  color: rgba(200, 180, 120, 0.55) !important;
+}
+
+/* Cards / pages gold tint */
+.page, .card, .task-card, .friend-card, .lb-row, .checkin-card {
+  border-color: rgba(212, 175, 55, 0.22) !important;
+}
+
+.claim-btn, .btn-primary, .checkin-btn {
+  background: linear-gradient(135deg, #c9a227, #f0d878) !important;
+  color: #1a1200 !important;
+  box-shadow: 0 0 16px rgba(212, 175, 55, 0.4) !important;
+  border: none !important;
+}
+
+/* Hide any leftover green crystal loading rocks */
+.ls-crystal, .tap-rock, .tap-glow-core, .logo-platform,
+.logo-platform-beam, .logo-platform-base, .logo-platform-glow {
+  display: none !important;
+}
+
+/* Loading screen ATF dark gold */
+.loading-screen {
+  background: linear-gradient(180deg, #0a0804 0%, #050403 50%, #000 100%) !important;
+}
+.loading-title {
+  background: linear-gradient(90deg, #f0d878, #ffe566) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+.loading-bar-fill {
+  background: linear-gradient(90deg, #c9a227, #f0d878, #c9a227) !important;
+}
+
+/* Toast ATF */
+.toast {
+  background: linear-gradient(135deg, rgba(30, 22, 8, 0.95), rgba(15, 12, 5, 0.98)) !important;
+  border: 1px solid rgba(212, 175, 55, 0.4) !important;
+  color: #f5ecd0 !important;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.5), 0 0 20px rgba(212,175,55,0.15) !important;
+}
