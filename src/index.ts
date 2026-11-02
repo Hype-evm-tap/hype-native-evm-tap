@@ -443,7 +443,14 @@ app.get('/api/tasks', async (c) => {
 async function checkTelegramTaskMembership(db: D1Database, env: Bindings, userId: number, taskId: number) {
   const task = await db.prepare('SELECT * FROM tasks WHERE id = ? AND is_active = 1').bind(taskId).first<any>();
   if (!task) return { error: 'Task not found', status: 404 };
-  if (String(task.type).toLowerCase() !== 'telegram') return { error: 'Automatic verification is currently available only for public Telegram channels', status: 422 };
+  const taskType = String(task.type || '').toLowerCase();
+  if (taskType === 'youtube') {
+    const youtubeLink = /^(https?:\/\/)?(www\.)?(youtube\.com\/(channel\/|@|c\/|user\/|watch\?v=)|youtu\.be\/)[A-Za-z0-9_?&=.-]+/i.test(String(task.link || '').trim());
+    if (!youtubeLink) return { error: 'YouTube task link is invalid', status: 422 };
+    const claimed = await db.prepare('SELECT 1 FROM user_tasks WHERE user_id = ? AND task_id = ?').bind(userId, taskId).first();
+    return { task, isMember: true, manual: true, claimed: !!claimed };
+  }
+  if (taskType !== 'telegram') return { error: 'Unsupported task type', status: 422 };
   if (!env.BOT_TOKEN) return { error: 'Telegram bot token is not configured', status: 503 };
   const match = String(task.link || '').trim().match(/(?:https?:\/\/)?(?:www\.)?t\.me\/([A-Za-z0-9_]{5,})|^@([A-Za-z0-9_]{5,})$/i);
   const channel = match?.[1] ? `@${match[1]}` : match?.[2] ? `@${match[2]}` : '';
@@ -465,7 +472,7 @@ app.post('/api/tasks/verify', async (c) => {
     const check: any = await checkTelegramTaskMembership(c.env.DB, c.env, userId, taskId);
     if (check.error) return c.json({ error: check.error }, check.status);
     const claimed = await c.env.DB.prepare('SELECT 1 FROM user_tasks WHERE user_id = ? AND task_id = ?').bind(userId, taskId).first();
-    return c.json({ verified: check.isMember, claimed: !!claimed, message: check.isMember ? 'Membership verified' : 'Join the channel first' });
+    return c.json({ verified: check.isMember, claimed: !!claimed || !!check.claimed, manual: !!check.manual, message: check.manual ? 'YouTube task ready for self-confirmation' : check.isMember ? 'Membership verified' : 'Join the channel first' });
   } catch (e: any) { return c.json({ error: e?.message || 'Task verification failed' }, 400); }
 });
 
@@ -588,8 +595,10 @@ app.post('/api/admin/tasks', async (c) => {
   const type = String(b.type || 'telegram').trim().toLowerCase();
   const link = String(b.link || '').trim().slice(0, 500);
   const reward = Number(b.reward);
-  const telegramChannel = link.match(/^(?:https?:\/\/)?(?:www\.)?t\.me\/([A-Za-z0-9_]{5,})\/?$|^@([A-Za-z0-9_]{5,})$/i);
-  if (!title || !telegramChannel || type !== 'telegram' || !Number.isFinite(reward) || reward < 0 || reward > 1000000) return c.json({ error: 'Only public Telegram channel links (t.me/name or @name), with a valid title and reward, are supported' }, 400);
+  const telegramChannel = /^(?:https?:\/\/)?(?:www\.)?t\.me\/[A-Za-z0-9_]{5,}\/?$|^@[A-Za-z0-9_]{5,}$/i.test(link);
+  const youtubeLink = /^(https?:\/\/)?(www\.)?(youtube\.com\/(channel\/|@|c\/|user\/|watch\?v=)|youtu\.be\/)[A-Za-z0-9_?&=.-]+/i.test(link);
+  const validLink = (type === 'telegram' && telegramChannel) || (type === 'youtube' && youtubeLink);
+  if (!title || !validLink || !['telegram', 'youtube'].includes(type) || !Number.isFinite(reward) || reward < 0 || reward > 1000000) return c.json({ error: 'Enter a valid public t.me or YouTube channel/video link, title and reward' }, 400);
   const info = await c.env.DB.prepare('INSERT INTO tasks (title, type, link, reward, is_active) VALUES (?, ?, ?, ?, 1)').bind(title, type, link, reward).run();
   return c.json({ success: true, id: info.meta.last_row_id });
 });
