@@ -1090,6 +1090,12 @@ showToast(data.error || 'Already checked in today');
 
 .map((v) => (v !== '' ? parseFloat(v) : null));
     if (dayRewards.some((v) => v != null)) body.checkin_day_rewards = dayRewards.map((v, i) => v != null ? v : (checkinRewards[i] || 0));
+    const numericValues = Object.entries(body).filter(([key]) => key !== 'checkin_day_rewards');
+    if (numericValues.some(([, value]) => !Number.isFinite(value)) ||
+        (body.checkin_day_rewards && body.checkin_day_rewards.some((value) => !Number.isFinite(value)))) {
+      showToast('Please enter valid numbers in all settings fields');
+      return;
+    }
     const data = await api('/api/admin/settings', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -1136,12 +1142,19 @@ showToast(data.error || 'Already checked in today');
   const saveUserEdit = async () => {
     if (!editUserId) return;
     const body = {
-      balance: parseFloat(editUserData.balance),
-      total_earned: parseFloat(editUserData.total_earned),
-      total_taps: parseInt(editUserData.total_taps),
+      balance: Number(editUserData.balance),
+      total_earned: Number(editUserData.total_earned),
+      total_taps: Number(editUserData.total_taps),
       is_admin: editUserData.is_admin,
-      invite_count: parseInt(editUserData.invite_count),
+      invite_count: Number(editUserData.invite_count),
     };
+    if (!Number.isFinite(body.balance) || body.balance < 0 ||
+        !Number.isFinite(body.total_earned) || body.total_earned < 0 ||
+        !Number.isSafeInteger(body.total_taps) || body.total_taps < 0 ||
+        !Number.isSafeInteger(body.invite_count) || body.invite_count < 0) {
+      showToast('Enter valid non-negative numbers in every user field');
+      return;
+    }
     const data = await api(`/api/admin/users/${editUserId}`, {
       method: 'POST',
       body: JSON.stringify(body),
@@ -1336,14 +1349,21 @@ user: tg?.initDataUnsafe?.user,
     if (data.success) {
       showToast('Task added');
       setNewTask({ title: '', type: 'telegram', link: '', reward: '0.0085' });
-      loadAdmin();
+      await loadAdmin();
+    } else {
+      showToast(data.error || 'Task could not be added');
     }
   };
 
   const deleteTask = async (id) => {
-    await api(`/api/admin/tasks/${id}`, { method: 'DELETE' });
-    showToast('Deleted');
-    loadAdmin();
+    if (!confirm('Delete this task?')) return;
+    const data = await api(`/api/admin/tasks/${id}`, { method: 'DELETE' });
+    if (data.success) {
+      showToast('Task deleted');
+      await loadAdmin();
+    } else {
+      showToast(data.error || 'Task could not be deleted');
+    }
   };
 
   const sendBroadcast = async () => {
