@@ -1230,13 +1230,13 @@ showToast(data.error || 'Already checked in today');
       api(`/api/admin/withdrawals?status=${adminWdFilter || 'pending'}`),
       api('/api/admin/tasks'),
       api('/api/admin/history'),
-      api('/api/admin/deposit-swaps?status=queued'),
+      api('/api/admin/deposit-swaps?status=all'),
     ]);
     setAdminStats(stats);
     setAdminWithdrawals(wds.withdrawals || []);
     setAdminTasks(tks.tasks || []);
     setAdminHistory(activity.history || []);
-    setAdminDepositSwaps(swaps.orders || []);
+    setAdminDepositSwaps((swaps.orders || []).filter((o) => ['queued', 'processing'].includes(o.status)));
   };
 
   const loadAdminSettings = async () => {
@@ -1749,19 +1749,25 @@ user: tg?.initDataUnsafe?.user,
   };
 
   const adminAction = async (id, action) => {
+    const payload = { action };
+    if (action === 'approve') {
+      const txHash = window.prompt('Paste the confirmed HyperEVM HYPE payout transaction hash:');
+      if (!txHash) return;
+      payload.tx_hash = txHash.trim();
+    }
     const data = await api(`/api/admin/withdrawals/${id}`, {
       method: 'POST',
-      body: JSON.stringify({ action }),
+      body: JSON.stringify(payload),
     });
     if (data.success) {
-      showToast(`Marked ${action}`);
-      // Refresh current filter list + stats
+      showToast(action === 'approve' ? 'Payout verified on HyperEVM' : `Marked ${action}`);
       const [stats, wds] = await Promise.all([
         api('/api/admin/stats'),
         api(`/api/admin/withdrawals?status=${adminWdFilter || 'pending'}`),
       ]);
       if (stats && !stats.error) setAdminStats(stats);
       if (wds && !wds.error) setAdminWithdrawals(wds.withdrawals || []);
+      await loadHistory();
     } else {
       showToast(data.error || 'Action failed');
     }
@@ -2707,28 +2713,42 @@ const locked = !claimed && !current;
 
           {adminTab === 'deposits' && (
             <div className="card">
-              <div className="card-title">Deposit → HYPE Swap Approval</div>
+              <div className="card-title">Deposit → HYPE Settlement</div>
               <div style={{fontSize:'0.75rem',color:'#ffaa00',marginBottom:10}}>
-                Admin approval only queues the swap. On-chain swap execution is paused until a secure signer and network route are configured. No HYPE is credited by this approval.
+                Approve the source deposit, complete the conversion externally, send the received native HYPE to the configured treasury wallet, then verify its HyperEVM transaction here. Balance is credited only after on-chain confirmation.
               </div>
-              {adminDepositSwaps.length === 0 && <div>No deposits awaiting approval.</div>}
+              {adminDepositSwaps.length === 0 && <div>No queued or processing deposits.</div>}
               {adminDepositSwaps.map((o) => (
                 <div key={o.id} style={{padding:'10px 0',borderBottom:'1px solid rgba(0,255,136,0.12)'}}>
                   <div><strong>@{o.username || o.user_id}</strong> · {o.from_amount} {o.from_asset}</div>
                   <div style={{fontSize:'0.72rem',color:'#9aa',margin:'4px 0'}}>Network: {o.from_network} · Status: {o.status}</div>
-                  <div style={{fontSize:'0.68rem',overflowWrap:'anywhere'}}>TX: {o.source_tx_hash}</div>
-                  <div style={{display:'flex',gap:8,marginTop:8}}>
-                    <button className="btn btn-primary" onClick={async () => {
-                      const d = await api('/api/admin/deposit-swaps/' + o.id, {method:'POST',body:JSON.stringify({action:'approve'})});
-                      if (d.success) { showToast('Approved and queued; swap is not executed yet'); setAdminDepositSwaps((old)=>old.filter(x=>x.id!==o.id)); }
-                      else showToast(d.error || 'Approval failed');
-                    }}>Approve & Queue</button>
-                    <button className="btn btn-danger" onClick={async () => {
-                      const d = await api('/api/admin/deposit-swaps/' + o.id, {method:'POST',body:JSON.stringify({action:'reject'})});
-                      if (d.success) setAdminDepositSwaps((old)=>old.filter(x=>x.id!==o.id));
-                      else showToast(d.error || 'Reject failed');
-                    }}>Reject</button>
-                  </div>
+                  <div style={{fontSize:'0.68rem',overflowWrap:'anywhere'}}>Deposit TX: {o.source_tx_hash}</div>
+                  {o.status === 'queued' ? (
+                    <div style={{display:'flex',gap:8,marginTop:8}}>
+                      <button className="btn btn-primary" onClick={async () => {
+                        const d = await api('/api/admin/deposit-swaps/' + o.id, {method:'POST',body:JSON.stringify({action:'approve'})});
+                        if (d.success) { showToast('Approved. Complete conversion and settle with the HYPE receipt.'); await loadAdmin(); }
+                        else showToast(d.error || 'Approval failed');
+                      }}>Approve for conversion</button>
+                      <button className="btn btn-danger" onClick={async () => {
+                        const d = await api('/api/admin/deposit-swaps/' + o.id, {method:'POST',body:JSON.stringify({action:'reject'})});
+                        if (d.success) { showToast('Rejected. Source deposit requires manual refund.'); await loadAdmin(); }
+                        else showToast(d.error || 'Reject failed');
+                      }}>Reject</button>
+                    </div>
+                  ) : (
+                    <div style={{display:'flex',gap:8,marginTop:8,flexWrap:'wrap'}}>
+                      <button className="btn btn-primary" onClick={async () => {
+                        const hypeAmount = window.prompt('Enter HYPE amount to credit to the user (max 18 decimals):');
+                        if (!hypeAmount) return;
+                        const txHash = window.prompt('Paste the confirmed incoming native HYPE transfer hash to the treasury:');
+                        if (!txHash) return;
+                        const d = await api('/api/admin/deposit-swaps/' + o.id, {method:'POST',body:JSON.stringify({action:'complete',hype_amount:hypeAmount.trim(),tx_hash:txHash.trim()})});
+                        if (d.success) { showToast('HYPE received and user balance credited'); await loadAdmin(); await loadUser(); await loadHistory(); }
+                        else showToast(d.error || 'Settlement failed');
+                      }}>Verify HYPE receipt & credit</button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -2952,6 +2972,7 @@ const locked = !claimed && !current;
                   <div style={{ fontSize: '0.78rem', wordBreak: 'break-all', margin: '6px 0', color: '#a0ffc0' }}>
                     {w.wallet_address}
                   </div>
+                  {w.tx_hash && <div style={{fontSize:'0.68rem',overflowWrap:'anywhere',marginBottom:8}}>Payout TX: {w.tx_hash}</div>}
                   <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: 8 }}>
                     ID: {w.id} • User: {w.user_id}
                     {w.created_at ? ` • ${new Date((w.created_at > 1e12 ? w.created_at : w.created_at * 1000)).toLocaleString()}` : ''}
