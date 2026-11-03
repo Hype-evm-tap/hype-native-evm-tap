@@ -231,7 +231,7 @@ export default function App() {
   const [tonWallet, setTonWallet] = useState(null);
   const tonConnectUIRef = useRef(null);
   const tonProofVerifyingRef = useRef(false);
-  const [depositNetwork, setDepositNetwork] = useState('bep20');
+  const [depositNetwork, setDepositNetwork] = useState('eth');
   const [depositHash, setDepositHash] = useState('');
   const [depositBusy, setDepositBusy] = useState(false);
   const [depositData, setDepositData] = useState({ deposits: [], balances: { ton: 0, bep20: 0, trc20: 0 }, wallets: {} });
@@ -2452,37 +2452,37 @@ const locked = !claimed && !current;
             </div>
             <div className="card" style={{margin:0,padding:14}}>
               <div style={{fontSize:'0.7rem',color:'#9aa',fontWeight:800}}>VERIFIED DEPOSITS</div>
-              <div style={{fontSize:'1.25rem',fontWeight:900,color:'#fff',marginTop:7}}>3 ASSETS</div>
-              <div style={{fontSize:'0.7rem',color:'#8a9b91'}}>ETH · USDT · TON deposits tracked</div>
+              <div style={{fontSize:'1.25rem',fontWeight:900,color:'#fff',marginTop:7}}>ETH · USDT · TON</div>
+              <div style={{fontSize:'0.7rem',color:'#8a9b91'}}>Only supported deposit assets</div>
             </div>
           </div>
           <div className="card">
             <div className="card-title"><Icon name="arrow-left-right" size={18}/> Deposit → HYPE Swap</div>
             <div style={{fontSize:'0.78rem',color:'#a0ffc0',lineHeight:1.55,marginBottom:12}}>Every successfully verified deposit is automatically added to the HYPE conversion queue. HYPE is credited to your balance only after the conversion is completed and the incoming HYPE transfer is verified on HyperEVM.</div>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:8}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:8}}>
               <div style={{background:'#101b16',border:'1px solid #254634',borderRadius:10,padding:10}}><div style={{fontSize:'0.68rem',color:'#9aa'}}>ETH deposited</div><strong style={{fontSize:'0.9rem'}}>{Number(depositData.balances?.eth||0).toFixed(6)} ETH</strong></div>
-              <div style={{background:'#101b16',border:'1px solid #254634',borderRadius:10,padding:10}}><div style={{fontSize:'0.68rem',color:'#9aa'}}>USDC deposited</div><strong style={{fontSize:'0.9rem'}}>{Number(depositData.balances?.usdc_eth||0).toFixed(4)} USDC</strong></div>
+              <div style={{background:'#101b16',border:'1px solid #254634',borderRadius:10,padding:10}}><div style={{fontSize:'0.68rem',color:'#9aa'}}>USDC deposited</div><strong style={{fontSize:'0.9rem'}}>{Number(depositData.balances?.bep20||0)+Number(depositData.balances?.trc20||0).toFixed(4)} USDC</strong></div>
             </div>
             <div style={{fontSize:'0.7rem',color:'#ffaa66',marginTop:10}}>Conversion is currently operator-settled, not an instant on-chain swap. Your HYPE balance updates after settlement.</div>
           </div>
                     <div className="card">
             <div className="card-title"><Icon name="coins" size={16} /> Deposit</div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-              {['eth', 'usdc_eth'].map((network) => (
-                <button key={network} className={`admin-tab ${depositNetwork === network ? 'active' : ''}`} onClick={() => setDepositNetwork(network)} title={network === 'usdc_eth' ? 'USDC Ethereum ERC20' : 'ETH Ethereum'} aria-label={network === 'usdc_eth' ? 'USDC Ethereum ERC20' : 'ETH Ethereum'}>
-                  <Icon name={network === 'usdc_eth' ? 'usdc' : 'eth'} size={22} />
-                  <span style={{ fontSize: '0.72rem', marginLeft: 4 }}>{network === 'usdc_eth' ? 'USDC' : 'ETH'}</span>
+              {['eth', 'bep20', 'trc20', 'ton'].map((network) => (
+                <button key={network} className={`admin-tab ${depositNetwork === network ? 'active' : ''}`} onClick={() => setDepositNetwork(network)} title={network === 'ton' ? 'TON / GRAM' : network === 'bep20' ? 'USDT BEP20' : network === 'trc20' ? 'USDT TRC20' : 'ETH Ethereum'} aria-label={network === 'usdc_eth' ? 'USDC Ethereum ERC20' : 'ETH Ethereum'}>
+                  <Icon name={network === 'ton' ? 'ton' : network === 'bep20' || network === 'trc20' ? 'usdt' : 'eth'} size={22} />
+                  <span style={{ fontSize: '0.72rem', marginLeft: 4 }}>{network === 'ton' ? 'TON' : network === 'bep20' ? 'USDT' : network === 'trc20' ? 'USDT' : 'ETH'}</span>
                 </button>
               ))}
             </div>
             <div style={{ fontSize: '0.8rem', color: '#a0ffc0', marginBottom: 6 }}>
-              {depositNetwork === 'usdc_eth' ? <>Send only <Icon name="usdc" size={17} title="USDC" /> (USDC ERC20) on Ethereum Mainnet to this address:</> : <>Send native <Icon name="eth" size={17} title="ETH" /> only on Ethereum Mainnet to this address:</>}
+              {depositNetwork === 'ton' ? <>Send native <Icon name="ton" size={17} title="TON" /> only (TON / GRAM uses this same address). Jettons are not accepted.</> : depositNetwork === 'eth' ? <>Send native <Icon name="eth" size={17} title="ETH" /> only on Ethereum Mainnet to this address:</> : <>Send only <Icon name="usdt" size={17} title="USDT" /> on {depositNetwork === 'bep20' ? 'BNB Smart Chain (BEP20)' : 'TRON (TRC20)'} to this address:</>}
             </div>
             <div style={{ padding: 10, borderRadius: 8, background: 'rgba(0,255,136,0.07)', wordBreak: 'break-all', fontSize: '0.78rem' }}>
-              0x87Ad7Fe8Be9eeEa2E388F80f4C5fcF450E037463
+              {depositNetwork === 'ton' ? 'UQBtBjwUwBXKsJuRr1UFdba_B1Rh8gXo0uFBzuT9-mVC17yl' : depositNetwork === 'bep20' ? '0xaaa40bd792bd26c1e5f6481b25ac1f8d4cf62f4a' : depositNetwork === 'trc20' ? 'THcEQMCe1eyfajz7TyFUe8EmW2AQuCc1do' : '0x87Ad7Fe8Be9eeEa2E388F80f4C5fcF450E037463'}
             </div>
             <button className="btn btn-secondary" style={{ width: '100%', marginTop: 8 }} onClick={() => {
-              const address = '0x87Ad7Fe8Be9eeEa2E388F80f4C5fcF450E037463';
+              const address = depositNetwork === 'ton' ? 'UQBtBjwUwBXKsJuRr1UFdba_B1Rh8gXo0uFBzuT9-mVC17yl' : depositNetwork === 'bep20' ? '0xaaa40bd792bd26c1e5f6481b25ac1f8d4cf62f4a' : depositNetwork === 'trc20' ? 'THcEQMCe1eyfajz7TyFUe8EmW2AQuCc1do' : '0x87Ad7Fe8Be9eeEa2E388F80f4C5fcF450E037463';
               copyText(address).then(() => showToast('Deposit address copied')).catch(() => showToast('Copy address manually'));
             }}>Copy Deposit Address</button>
             <input className="input" style={{ marginTop: 12 }} placeholder="Paste transaction hash" value={depositHash} onChange={(e) => setDepositHash(e.target.value.trim())} />
@@ -2490,10 +2490,10 @@ const locked = !claimed && !current;
               {depositBusy ? 'Checking blockchain…' : 'Verify Deposit'}
             </button>
             <div style={{ marginTop: 12, fontSize: '0.85rem', color: '#a0ffc0' }}>
-              Verified balance: <Icon name={depositNetwork === 'usdc_eth' ? 'usdc' : 'eth'} size={20} title={depositNetwork === 'usdc_eth' ? 'USDC' : 'ETH'} /> {Number(depositData.balances?.[depositNetwork] || 0).toFixed(depositNetwork === 'eth' ? 9 : 6)} {depositNetwork === 'usdc_eth' ? 'USDC' : 'ETH'}
+              Verified balance: <Icon name={depositNetwork === 'ton' ? 'ton' : depositNetwork === 'bep20' || depositNetwork === 'trc20' ? 'usdt' : 'eth'} size={20} title={depositNetwork === 'usdc_eth' ? 'USDC' : 'ETH'} /> {Number(depositData.balances?.[depositNetwork] || 0).toFixed(depositNetwork === 'eth' || depositNetwork === 'ton' ? 9 : 6)} {depositNetwork === 'ton' ? 'TON' : depositNetwork === 'bep20' || depositNetwork === 'trc20' ? 'USDT' : 'ETH'}
             </div>
             <div style={{ fontSize: '0.72rem', color: '#888', marginTop: 5 }}>
-              {depositNetwork === 'usdc_eth' ? 'Send USDC ERC20 on Ethereum Mainnet only. The sender must match your signature-verified EVM wallet. Each transaction hash can be credited once.' : 'Send native ETH on Ethereum Mainnet only. The sender must match your signature-verified EVM wallet. Each transaction hash can be credited once.'}
+              {depositNetwork === 'ton' ? 'TON sender must match your TON Connect signature-verified wallet. Connect your TON wallet from the Wallet tab before submitting a deposit.' : depositNetwork === 'eth' ? 'Send native ETH on Ethereum Mainnet. The sender must match your signature-verified EVM wallet. Each transaction hash can be credited once.' : 'Send USDT only on the selected BNB Smart Chain or TRON network. Sender must match your linked wallet. Each transaction hash can be credited once.'}
             </div>
           </div>
 
