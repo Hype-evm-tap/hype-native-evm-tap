@@ -594,22 +594,31 @@ const persistWallet = async (addr) => {
       showToast('Invalid EVM address');
       return false;
     }
-    const previousAddress = connectedWallet;
-    const previousWithdrawAddress = wdWallet;
-    setConnectedWallet(clean);
-    setWdWallet(clean);
-    const data = await api('/api/wallet', {
-      method: 'POST',
-      body: JSON.stringify({ user: window.Telegram?.WebApp?.initDataUnsafe?.user || tg?.initDataUnsafe?.user, wallet_address: clean }),
-    });
-    if (data?.error) {
-      setConnectedWallet(previousAddress);
-      setWdWallet(previousWithdrawAddress);
-      showToast(`Wallet connected, but server save failed: ${String(data.error).slice(0, 55)}`);
+    try {
+      const challenge = await api('/api/wallet/challenge', {
+        method: 'POST',
+        body: JSON.stringify({ address: clean }),
+      });
+      if (!challenge?.message) throw new Error(challenge?.error || 'Could not prepare sign-in message');
+      const signer = wcProviderRef.current || window.ethereum;
+      if (!signer?.request) throw new Error('Wallet session unavailable. Reconnect your wallet.');
+      const signature = await signer.request({
+        method: 'personal_sign',
+        params: [challenge.message, clean],
+      });
+      const verified = await api('/api/wallet/verify', {
+        method: 'POST',
+        body: JSON.stringify({ address: clean, message: challenge.message, signature }),
+      });
+      if (verified?.error || !verified?.success) throw new Error(verified?.error || 'Signature verification failed');
+      setConnectedWallet(clean);
+      setWdWallet(clean);
+      showToast('Wallet ownership verified and connected');
+      return true;
+    } catch (e) {
+      showToast(String(e?.message || 'Wallet sign-in failed').slice(0, 95));
       return false;
     }
-    showToast('Wallet connected');
-    return true;
   };
 
   /** Injected wallet (MetaMask / Rabby) when available */
@@ -709,7 +718,7 @@ const persistWallet = async (addr) => {
     wcProviderRef.current = provider;
 
     provider.on('accountsChanged', (accounts) => {
-      if (accounts?.[0]) persistWallet(accounts[0]);
+      if (accounts?.[0]) { setConnectedWallet(''); setWdWallet(''); }
       else {
         setConnectedWallet('');
         setWdWallet('');
