@@ -2470,7 +2470,7 @@ const locked = !claimed && !current;
             <div className="card-title"><Icon name="coins" size={16} /> Deposit</div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
               {['eth', 'bep20', 'trc20', 'ton'].map((network) => (
-                <button key={network} className={`admin-tab ${depositNetwork === network ? 'active' : ''}`} onClick={() => setDepositNetwork(network)} title={network === 'ton' ? 'TON / GRAM' : network === 'bep20' ? 'USDT BNB Smart Chain' : network === 'trc20' ? 'USDT TRON' : network === 'eth' ? 'ETH Ethereum'} aria-label={network === 'ton' ? 'TON / GRAM' : network === 'bep20' ? 'USDT BEP20' : network === 'trc20' ? 'USDT TRC20' : network === 'eth' ? 'ETH Ethereum'}>
+                <button key={network} className={`admin-tab ${depositNetwork === network ? 'active' : ''}`} onClick={() => setDepositNetwork(network)} title={network === 'ton' ? 'TON / GRAM' : network === 'bep20' ? 'USDT BNB Smart Chain' : network === 'trc20' ? 'USDT TRON' : 'ETH Ethereum'} aria-label={network === 'ton' ? 'TON / GRAM' : network === 'bep20' ? 'USDT BEP20' : network === 'trc20' ? 'USDT TRC20' : 'ETH Ethereum'}>
                   <Icon name={network === 'ton' ? 'ton' : network === 'eth' ? 'eth' : 'usdt'} size={22} />
                   <span style={{ fontSize: '0.72rem', marginLeft: 4 }}>{network === 'ton' ? 'TON' : network === 'bep20' ? 'USDT BEP20' : network === 'trc20' ? 'USDT TRC20' : 'ETH'}</span>
                 </button>
