@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useTonConnectUI } from '@tonconnect/ui-react';
 
 const tg = window.Telegram?.WebApp;
 if (tg) {
@@ -211,8 +210,6 @@ function Icon({ name, className = '', size = 18, title = '' }) {
 }
 
 export default function App() {
-  const [tonConnectUI] = useTonConnectUI();
-  tonConnectUIRef.current = tonConnectUI;
   const [tab, setTab] = useState('tap');
   const [user, setUser] = useState(null);
   const [config, setConfig] = useState(null);
@@ -1490,52 +1487,89 @@ showToast(data.error || 'Already checked in today');
     if (!data.error) setHistory(data.history || []);
   };
 
-  useEffect(() => {
-    if (!tonConnectUI) return undefined;
-    tonConnectUI.setConnectionNetwork('-239');
-    const unsubscribe = tonConnectUI.onStatusChange(async (wallet) => {
-      if (!wallet) return;
-      const item = wallet.connectItems?.tonProof;
-      if (!item || !('proof' in item)) {
-        showToast('This TON wallet did not return TON proof. Try Tonkeeper or another TON mainnet wallet.');
-        try { await tonConnectUI.disconnect(); } catch (_) {}
-        return;
-      }
-      if (tonProofVerifyingRef.current) return;
-      tonProofVerifyingRef.current = true;
-      try {
-        const walletStateInit = wallet.account?.walletStateInit;
-        if (!walletStateInit) throw new Error('TON wallet did not provide wallet state. Reconnect and approve the proof.');
-        const result = await api('/api/ton-proof/verify', {
-          method: 'POST',
-          body: JSON.stringify({
-            address: wallet.account.address,
-            network: wallet.account.chain,
-            public_key: wallet.account.publicKey || undefined,
-            wallet_state_init: walletStateInit,
-            proof: item.proof,
-          }),
-        });
-        if (!result.success) throw new Error(result.error || 'TON ownership proof failed');
-        setTonWallet({ address_friendly: result.address, address_raw: result.address_raw });
-        showToast('TON wallet ownership verified');
-      } catch (e) {
-        showToast(String(e?.message || 'TON verification failed').slice(0, 100));
-        try { await tonConnectUI.disconnect(); } catch (_) {}
-      } finally {
-        tonProofVerifyingRef.current = false;
-      }
-    });
-    return typeof unsubscribe === 'function' ? unsubscribe : undefined;
-  }, [tonConnectUI]);
-
   const connectTonWallet = async () => {
+    // A synchronous window-level lock prevents two taps/remounts from constructing
+    // TonConnectUI twice before React state has time to update.
     if (window.__HYPE_TONCONNECT_CONNECTING__) return;
     window.__HYPE_TONCONNECT_CONNECTING__ = true;
     try {
       setWalletConnecting(true);
-      const ui = tonConnectUI;
-      if (!ui) throw new Error('TON wallet connector is initializing. Please retry.');
+      // TonConnectUI registers the global custom element "tc-root".
+      // Keep one instance across React remounts to prevent duplicate registration.
+      let ui = tonConnectUIRef.current || window.__HYPE_TONCONNECT_UI__ || null;
+      if (!ui) {
+        // Load the official browser bundle outside Vite's module graph.
+        // This avoids Solid/Vite interop errors such as "src is not a function".
+        if (!window.TON_CONNECT_UI?.TonConnectUI) {
+          await new Promise((resolve, reject) => {
+            const existing = document.querySelector('script[data-tonconnect-ui]');
+            const script = existing || document.createElement('script');
+            const onLoad = () => window.TON_CONNECT_UI?.TonConnectUI
+              ? resolve()
+              : reject(new Error('TON Connect UI bundle loaded but API is unavailable'));
+            const onError = () => reject(new Error('Could not load TON Connect UI. Check your connection and retry.'));
+            if (existing) {
+              if (window.TON_CONNECT_UI?.TonConnectUI) return resolve();
+              script.addEventListener('load', onLoad, { once: true });
+              script.addEventListener('error', onError, { once: true });
+            } else {
+              script.src = 'https://unpkg.com/@tonconnect/ui@2.0.2/dist/tonconnect-ui.min.js';
+              script.async = true;
+              script.dataset.tonconnectUi = 'true';
+              script.addEventListener('load', onLoad, { once: true });
+              script.addEventListener('error', onError, { once: true });
+              document.head.appendChild(script);
+            }
+          });
+        }
+        const TonConnectUI = window.TON_CONNECT_UI?.TonConnectUI;
+        if (typeof TonConnectUI !== 'function') throw new Error('TON Connect UI is unavailable. Please retry.');
+        ui = new TonConnectUI({
+          manifestUrl: window.location.origin + '/tonconnect-manifest.json',
+          enableAndroidBackHandler: false,
+        });
+        ui.setConnectionNetwork('-239');
+        ui.onStatusChange(async (wallet) => {
+          if (!wallet) return;
+          const item = wallet.connectItems?.tonProof;
+          if (!item || !('proof' in item)) {
+            showToast('This TON wallet did not return TON proof. Try Tonkeeper or another TON mainnet wallet.');
+            try { await ui.disconnect(); } catch (_) {}
+            return;
+          }
+          if (tonProofVerifyingRef.current) return;
+          tonProofVerifyingRef.current = true;
+          try {
+            const walletStateInit = wallet.account?.walletStateInit;
+            if (!walletStateInit) throw new Error('TON wallet did not provide wallet state. Reconnect and approve the proof.');
+            const result = await api('/api/ton-proof/verify', {
+              method: 'POST',
+              body: JSON.stringify({
+                address: wallet.account.address,
+                network: wallet.account.chain,
+                public_key: wallet.account.publicKey || undefined,
+                wallet_state_init: walletStateInit,
+                proof: item.proof,
+              }),
+            });
+            if (!result.success) throw new Error(result.error || 'TON ownership proof failed');
+            setTonWallet({ address_friendly: result.address, address_raw: result.address_raw });
+            showToast('TON wallet ownership verified');
+          } catch (e) {
+            showToast(String(e?.message || 'TON verification failed').slice(0, 100));
+            try { await ui.disconnect(); } catch (_) {}
+          } finally {
+            tonProofVerifyingRef.current = false;
+          }
+        });
+        tonConnectUIRef.current = ui;
+        window.__HYPE_TONCONNECT_UI__ = ui;
+      } else {
+        tonConnectUIRef.current = ui;
+      }
+      if (ui.connected) {
+        await ui.disconnect();
+      }
       ui.setConnectRequestParameters({ state: 'loading' });
       const challenge = await api('/api/ton-proof/payload', { method: 'POST', body: '{}' });
       if (!challenge.payload) {
