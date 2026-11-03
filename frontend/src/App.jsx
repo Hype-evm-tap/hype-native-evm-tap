@@ -2441,7 +2441,7 @@ const locked = !claimed && !current;
                 <div style={{fontSize:'1.5rem',fontWeight:900,marginTop:4}}>Swap & Deposit</div>
                 <div style={{fontSize:'0.76rem',color:'#a0ffc0',marginTop:5}}>Deposit only these 4 supported routes: ETH, USDT (BEP20), USDT (TRC20), and native TON.</div>
               </div>
-              <img src="/hype-coin.svg" alt="HYPE" style={{width:52,height:52,objectFit:'contain'}} />
+              <Icon name="hype" size={52} title="HYPE" />
             </div>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
