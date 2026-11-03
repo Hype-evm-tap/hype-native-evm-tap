@@ -2412,12 +2412,16 @@ const locked = !claimed && !current;
 
           <div className="card">
             <div className="card-title"><img src="/hype-coin.svg" alt="HYPE" style={{width:24,height:24,objectFit:'contain'}} /> HyperEVM Swap · Native HYPE</div>
-            <div style={{fontSize:'0.78rem',color:'#a0ffc0',marginBottom:10}}>Swap a supported HyperEVM token from your connected wallet into native HYPE. Chain ID 999. Each approval and swap is confirmed in your wallet.</div>
-            <label style={{display:'block',fontSize:'0.78rem',color:'#9aa',marginBottom:5}}>You pay</label>
+            <div style={{fontSize:'0.78rem',color:'#a0ffc0',marginBottom:10}}>Swap tokens you already hold in your connected wallet on HyperEVM (Chain ID 999) into native HYPE. This is a swap screen — it does not accept deposits.</div>
+            <div style={{fontSize:'0.76rem',color:'#ffd27a',background:'#211a0c',border:'1px solid #59451d',borderRadius:9,padding:10,marginBottom:12}}>
+              <strong>Where do I deposit USDT / USDC / ETH?</strong><br/>
+              Use the separate Deposit section and its displayed deposit address. Do not send funds to the token shown here. Funds deposited on Ethereum or another network will not automatically appear in this HyperEVM swap. To swap here, the selected token must already be in your connected wallet on HyperEVM.
+            </div>
+            <label style={{display:'block',fontSize:'0.78rem',color:'#9aa',marginBottom:5}}>Token to swap (from your HyperEVM wallet)</label>
             <select className="input" value={swapTokenAddress} onChange={e=>{setSwapTokenAddress(e.target.value);setSwapQuote(null);}} disabled={swapBusy || !swapTokens.length}>
               {swapTokens.map(token=><option key={token.address} value={token.address}>{token.symbol} · {token.name || token.address.slice(0,8)}</option>)}
             </select>
-            <input className="input" style={{marginTop:8}} type="number" min="0" step="any" inputMode="decimal" placeholder="Amount" value={swapAmount} onChange={e=>{setSwapAmount(e.target.value);setSwapQuote(null);}} disabled={swapBusy}/>
+            <input className="input" style={{marginTop:8}} type="number" min="0" step="any" inputMode="decimal" placeholder="Enter amount of selected token" value={swapAmount} onChange={e=>{setSwapAmount(e.target.value);setSwapQuote(null);}} disabled={swapBusy}/>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',margin:'12px 0 8px'}}>
               <span style={{fontSize:'0.78rem',color:'#9aa'}}>You receive</span>
               <strong style={{color:'#00ff88'}}>{swapQuote?.estimate?.toAmount ? unitsToDecimal(swapQuote.estimate.toAmount,Number(swapQuote.action?.toToken?.decimals || 18),8)+' HYPE' : 'Native HYPE'}</strong>
