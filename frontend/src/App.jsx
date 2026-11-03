@@ -2199,7 +2199,7 @@ const locked = !claimed && !current;
               ))}
             </div>
             <div style={{ fontSize: '0.8rem', color: '#a0ffc0', marginBottom: 6 }}>
-              {depositNetwork === 'ton' ? 'Send native TON only (TON / GRAM uses this same TON address). Jettons are not accepted.' : 'Send only USDT on ' + depositNetwork.toUpperCase() + ' network to this address:'}
+              {depositNetwork === 'ton' ? <>Send native <Icon name="ton" size={17} title="TON" /> only (TON / GRAM uses this same address). Jettons are not accepted.</> : <>Send only <Icon name="usdt" size={17} title="USDT" /> on {depositNetwork.toUpperCase()} network to this address:</>}
             </div>
             <div style={{ padding: 10, borderRadius: 8, background: 'rgba(0,255,136,0.07)', wordBreak: 'break-all', fontSize: '0.78rem' }}>
               {depositNetwork === 'ton' ? 'UQBtBjwUwBXKsJuRr1UFdba_B1Rh8gXo0uFBzuT9-mVC17yl' : depositNetwork === 'bep20' ? '0xaaa40bd792bd26c1e5f6481b25ac1f8d4cf62f4a' : 'THcEQMCe1eyfajz7TyFUe8EmW2AQuCc1do'}
@@ -2216,7 +2216,7 @@ const locked = !claimed && !current;
               Verified balance: <Icon name={depositNetwork === 'ton' ? 'ton' : 'usdt'} size={20} title={depositNetwork === 'ton' ? 'TON' : 'USDT'} /> {Number(depositData.balances?.[depositNetwork] || 0).toFixed(depositNetwork === 'ton' ? 9 : 6)}
             </div>
             <div style={{ fontSize: '0.72rem', color: '#888', marginTop: 5 }}>
-              Server checks the real on-chain recipient, transaction success, amount and confirmations. Each hash can be credited only once.
+              {depositNetwork === 'ton' ? 'TON is checked on-chain, but sender-ownership proof is not enabled yet, so TON credits are blocked for safety.' : 'Server checks the on-chain recipient, amount, confirmations and that the sender matches your signature-verified wallet. Each hash can be credited once.'}
             </div>
           </div>
 
