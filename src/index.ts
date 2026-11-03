@@ -312,7 +312,7 @@ app.get('/api/health', (c) => c.json({ ok: true, time: new Date().toISOString() 
 
 app.get('/api/config', async (c) => {
   const id = c.env.WALLETCONNECT_PROJECT_ID || c.env.VITE_WALLETCONNECT_PROJECT_ID || '';
-  return c.json({ walletConnectProjectId: id, bot_username: c.env.BOT_USERNAME || '' });
+  const config = await getConfig(c.env.DB, c.env);\n  return c.json({ walletConnectProjectId: id, bot_username: c.env.BOT_USERNAME || '', ad_reward: config.ad_reward, ads_enabled: config.ads_enabled, ads_daily_limit: 10 });
 });
 
 
@@ -974,9 +974,22 @@ app.post('/api/ads/start', async (c) => {
   const u = await ensureUser(c.env.DB, c.env, c.get('tgUser'), null);
   await ensureAdTables(c.env.DB);
   const ymid = 'hype_' + u.id + '_' + crypto.randomUUID().replace(/-/g, '');
-  await c.env.DB.prepare('INSERT INTO monetag_ad_events (ymid, user_id, status, reward) VALUES (?, ?, ?, ?)')
-    .bind(ymid, u.id, 'pending', cfg.ad_reward).run();
-  return c.json({ ymid, reward: cfg.ad_reward });
+  const started = await c.env.DB.prepare(
+    `INSERT INTO monetag_ad_events (ymid, user_id, status, reward)
+     SELECT ?, ?, 'pending', ?
+     WHERE (SELECT COUNT(*) FROM monetag_ad_events WHERE user_id = ? AND created_at > ?) < 10`
+  ).bind(ymid, u.id, cfg.ad_reward, u.id, nowSec() - 86400).run();
+  if ((started.meta?.changes ?? 0) !== 1) {
+    const used = await c.env.DB.prepare('SELECT COUNT(*) AS total FROM monetag_ad_events WHERE user_id = ? AND created_at > ?')
+      .bind(u.id, nowSec() - 86400).first<any>();
+    const oldest = await c.env.DB.prepare('SELECT MIN(created_at) AS oldest FROM monetag_ad_events WHERE user_id = ? AND created_at > ?')
+      .bind(u.id, nowSec() - 86400).first<any>();
+    const retryAfter = Math.max(1, (Number(oldest?.oldest) || nowSec()) + 86400 - nowSec());
+    return c.json({ error: 'Daily ad limit reached. You can watch more ads after the 24-hour limit resets.', daily_limit: 10, ads_used: Number(used?.total) || 10, retry_after: retryAfter }, 429);
+  }
+  const used = await c.env.DB.prepare('SELECT COUNT(*) AS total FROM monetag_ad_events WHERE user_id = ? AND created_at > ?')
+    .bind(u.id, nowSec() - 86400).first<any>();
+  return c.json({ ymid, reward: cfg.ad_reward, daily_limit: 10, ads_used: Number(used?.total) || 1, ads_remaining: Math.max(0, 10 - (Number(used?.total) || 1)) });
 });
 app.get('/api/ads/status/:ymid', async (c) => {
   await ensureAdTables(c.env.DB);
