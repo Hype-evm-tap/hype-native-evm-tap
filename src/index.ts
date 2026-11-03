@@ -1003,6 +1003,20 @@ app.post('/api/ads/start', async (c) => {
     .bind(u.id, nowSec() - 86400).first<any>();
   return c.json({ ymid, reward: cfg.ad_reward, daily_limit: 10, ads_used: Number(used?.total) || 1, ads_remaining: Math.max(0, 10 - (Number(used?.total) || 1)) });
 });
+app.get('/api/ads/history', async (c) => {
+  const u = c.get('tgUser');
+  await ensureAdTables(c.env.DB);
+  const { results } = await c.env.DB.prepare(
+    'SELECT ymid, status, reward, created_at, credited_at FROM monetag_ad_events WHERE user_id = ? ORDER BY created_at DESC LIMIT 100'
+  ).bind(u.id).all<any>();
+  return c.json({ history: (results || []).map((row: any) => ({
+    ymid: row.ymid,
+    status: row.status === 'credited' ? 'credited' : 'pending',
+    reward: Number(row.reward) || 0,
+    created_at: Number(row.created_at) || 0,
+    credited_at: Number(row.credited_at) || 0,
+  })) });
+});
 app.get('/api/ads/status/:ymid', async (c) => {
   await ensureAdTables(c.env.DB);
   const row = await c.env.DB.prepare('SELECT status, reward FROM monetag_ad_events WHERE ymid = ? AND user_id = ?')
