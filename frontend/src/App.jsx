@@ -655,21 +655,16 @@ const persistWallet = async (addr, walletProvider = null) => {
       const signer = walletProvider || wcProviderRef.current || window.ethereum;
       if (!signer?.request) throw new Error('Wallet session unavailable. Reconnect your wallet.');
 
-      // Trust Wallet (especially inside Telegram WebView) often rejects hex-encoded
-      // personal_sign. Prefer plain UTF-8 string first, then fall back to hex.
+      // WalletConnect / Trust Wallet expect personal_sign payloads as hex.
+      // This is an ownership proof only; it does not authorize transactions.
+      const messageHex = '0x' + Array.from(new TextEncoder().encode(challenge.message))
+        .map((byte) => byte.toString(16).padStart(2, '0')).join('');
       let signature;
       try {
-        signature = await signer.request({
-          method: 'personal_sign',
-          params: [challenge.message, clean],
-        });
-      } catch (plainErr) {
-        const messageHex = '0x' + Array.from(new TextEncoder().encode(challenge.message))
-          .map((byte) => byte.toString(16).padStart(2, '0')).join('');
-        signature = await signer.request({
-          method: 'personal_sign',
-          params: [messageHex, clean],
-        });
+        signature = await signer.request({ method: 'personal_sign', params: [messageHex, clean] });
+      } catch (hexErr) {
+        // Some injected providers accept UTF-8 text instead of hex.
+        signature = await signer.request({ method: 'personal_sign', params: [challenge.message, clean] });
       }
 
       const verified = await api('/api/wallet/verify', {
