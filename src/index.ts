@@ -665,23 +665,51 @@ app.get('/api/admin/users/:id', async (c) => {
   return c.json({ user: publicUser(u, c.env) });
 });
 app.post('/api/admin/users/:id', async (c) => {
-  const b = await c.req.json().catch(() => ({}));
-  const id = Number(c.req.param('id'));
-  if (!Number.isSafeInteger(id) || id <= 0) return c.json({ error: 'Invalid user id' }, 400);
-  const fields: Record<string, number> = {};
-  for (const k of ['balance', 'total_earned', 'total_taps', 'invite_count'] as const) {
-    if (b[k] === undefined || b[k] === null) continue;
-    const n = Number(b[k]);
-    if (!Number.isFinite(n) || n < 0 || n > 1e15 || (k !== 'balance' && k !== 'total_earned' && !Number.isSafeInteger(n))) return c.json({ error: `Invalid ${k}` }, 400);
-    fields[k] = n;
+  try {
+    const b = await c.req.json().catch(() => null);
+    if (!b || typeof b !== 'object' || Array.isArray(b)) return c.json({ error: 'Invalid request body' }, 400);
+    const id = Number(c.req.param('id'));
+    if (!Number.isSafeInteger(id) || id <= 0) return c.json({ error: 'Invalid user id' }, 400);
+
+    const fields: Record<string, number> = {};
+    for (const k of ['balance', 'total_earned', 'total_taps', 'invite_count'] as const) {
+      if (b[k] === undefined || b[k] === null || b[k] === '') continue;
+      const n = Number(b[k]);
+      if (!Number.isFinite(n) || n < 0 || n > 1e15 ||
+          ((k === 'total_taps' || k === 'invite_count') && !Number.isSafeInteger(n))) {
+        return c.json({ error: `Invalid ${k}` }, 400);
+      }
+      fields[k] = n;
+    }
+    if (b.is_admin !== undefined && typeof b.is_admin !== 'boolean' && b.is_admin !== 0 && b.is_admin !== 1) {
+      return c.json({ error: 'Invalid is_admin' }, 400);
+    }
+
+    const exists = await c.env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(id).first<any>();
+    if (!exists) return c.json({ error: 'User not found' }, 404);
+
+    const updates: string[] = [];
+    const values: number[] = [];
+    for (const key of ['balance', 'total_earned', 'total_taps', 'invite_count'] as const) {
+      if (fields[key] !== undefined) {
+        updates.push(`${key} = ?`);
+        values.push(fields[key]);
+      }
+    }
+    if (b.is_admin !== undefined) {
+      updates.push('is_admin = ?');
+      values.push(b.is_admin ? 1 : 0);
+    }
+    if (updates.length) {
+      await c.env.DB.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).bind(...values, id).run();
+    }
+    const updated = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<any>();
+    if (!updated) return c.json({ error: 'User not found after update' }, 404);
+    return c.json({ success: true, user: publicUser(updated, c.env) });
+  } catch (e: any) {
+    console.error('Admin user update failed:', e?.stack || e?.message || e);
+    return c.json({ error: e?.message || 'User update failed' }, 500);
   }
-  if (b.is_admin !== undefined && typeof b.is_admin !== 'boolean' && b.is_admin !== 0 && b.is_admin !== 1) return c.json({ error: 'Invalid is_admin' }, 400);
-  await c.env.DB.prepare(
-    `UPDATE users SET balance = COALESCE(?, balance), total_earned = COALESCE(?, total_earned), total_taps = COALESCE(?, total_taps), is_admin = COALESCE(?, is_admin), invite_count = COALESCE(?, invite_count) WHERE id = ?`
-  ).bind(fields.balance ?? null, fields.total_earned ?? null, fields.total_taps ?? null, b.is_admin == null ? null : (b.is_admin ? 1 : 0), id).run();
-  const updated = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<any>();
-  if (!updated) return c.json({ error: 'User not found' }, 404);
-  return c.json({ success: true, user: publicUser(updated, c.env) });
 });
 app.delete('/api/admin/users/:id', async (c) => {
   const id = Number(c.req.param('id'));
