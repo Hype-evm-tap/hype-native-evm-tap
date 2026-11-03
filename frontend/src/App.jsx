@@ -41,7 +41,7 @@ const SVGS = {
   ton: (<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#0098EA"/><path d="M8.3 9.5h15.4c1.6 0 2.6 1.7 1.8 3.1L17.7 25c-.8 1.4-2.6 1.4-3.4 0L6.5 12.6c-.8-1.4.2-3.1 1.8-3.1Zm3.1 3.1 4.6 8 4.6-8h-9.2Z" fill="#fff"/></svg>),
   eth: (<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#627EEA"/><path d="M16 4.5 8.8 16.3 16 20.5l7.2-4.2L16 4.5Zm0 17.4-7.2-4.2L16 27.5l7.2-9.8-7.2 4.2Z" fill="#fff" opacity=".95"/></svg>),
   usdt: (<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#26A17B"/><path fill="#fff" d="M17.9 17.4v-.1c-.1 0-.8.1-2 .1s-1.9-.1-2-.1v.1c-4.4-.2-7.7-1-7.7-2s3.3-1.8 7.7-2v3.2c.1 0 1 .1 2 .1s1.9-.1 2-.1v-3.2c4.4.2 7.7 1 7.7 2s-3.3 1.8-7.7 2Zm0-5.2V9.4h6.2V6.5H7.9v2.9h6.2v2.8C9 12.4 5 13.6 5 15.1v3.1c0 1.5 4 2.7 9.1 2.9v4.4h3.8v-4.4c5.1-.2 9.1-1.4 9.1-2.9v-3.1c0-1.5-4-2.7-9.1-2.9Z"/></svg>),
-  hype: (<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#101510" stroke="#00E887" strokeWidth="1.5"/><path d="M8 7h4v7h8V7h4v18h-4v-7h-8v7H8V7Z" fill="#00E887"/></svg>),
+  hype: (<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#062c25"/><path d="M4.5 16c0-5.2 2.8-8.5 6.7-8.5 4.1 0 4.2 5.2 8.3 5.2 3.4 0 3.9-5.2 7.8-5.2 0 0 2.2 3.5 2.2 8.5s-2.2 8.5-2.2 8.5c-3.9 0-4.4-5.2-7.8-5.2-4.1 0-4.2 5.2-8.3 5.2C7.3 24.5 4.5 21.2 4.5 16Z" fill="#9af9e3"/></svg>),
   telegram: (<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.7 3.3 18.6 20c-.2 1.2-.9 1.5-1.8.9l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5.1 9.3-8.4c.4-.4-.1-.6-.6-.2L6 13.5 1 12c-1.1-.3-1.1-1 .2-1.5L20.5 3c.9-.3 1.6.2 1.2 1.3Z"/></svg>),
   youtube: (<svg viewBox="0 0 24 24" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8ZM9.6 15.6V8.4L15.8 12l-6.2 3.6Z"/></svg>),
   globe: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg>),
@@ -2519,130 +2519,84 @@ const locked = !claimed && !current;
         </div>
       )}
 
-      {/* WALLET / WITHDRAW */}
+      {/* WALLET — Mining GRAM-inspired layout */}
       {tab === 'wallet' && (
-        <div className="page">
-          <div className="card">
-            <div className="card-title"><Icon name="wallet" size={16} /> Wallet</div>
+        <div className="page hype-wallet-page">
+          <section className="hw-hero">
+            <div className="hw-heading">Wallet</div>
+            <div className="hw-total-label">Total balance</div>
+            <div className="hw-total">{formatNum(user?.balance || 0, 10)} <span>HYPE</span></div>
+            <div className="hw-address-pill"><Icon name="wallet" size={15}/>{connectedWallet ? shortAddr(connectedWallet) : 'Wallet not connected'}</div>
+            <div className="hw-actions">
+              <button onClick={() => document.getElementById('hw-withdraw')?.scrollIntoView({behavior:'smooth',block:'start'})}><span className="hw-action-icon"><Icon name="arrow-up" size={22}/></span>Withdraw</button>
+              <button onClick={() => setTab('swap')}><span className="hw-action-icon"><Icon name="arrow-down" size={22}/></span>Deposit</button>
+              <button onClick={() => setTab('swap')}><span className="hw-action-icon"><Icon name="repeat" size={22}/></span>Buy Points</button>
+            </div>
+          </section>
+
+          <div className="hw-section-label">BALANCES</div>
+          <section className="hw-balance-list">
+            <div className="hw-balance-row">
+              <Icon name="hype" size={42}/><div className="hw-token-meta"><strong>HYPE</strong><span>Available in your app</span></div>
+              <div className="hw-token-amount"><strong>{formatNum(user?.balance || 0,10)}</strong><span>HYPE</span></div><Icon name="chevron-right" size={18}/>
+            </div>
+            <div className="hw-balance-row">
+              <Icon name="eth" size={42}/><div className="hw-token-meta"><strong>ETH</strong><span>Ethereum deposit route</span></div>
+              <div className="hw-token-amount"><strong>{formatNum(depositData.balances?.eth || 0,8)}</strong><span>ETH</span></div><Icon name="chevron-right" size={18}/>
+            </div>
+            <div className="hw-balance-row">
+              <Icon name="usdt" size={42}/><div className="hw-token-meta"><strong>USDT</strong><span>BNB Smart Chain · BEP20</span></div>
+              <div className="hw-token-amount"><strong>{formatNum(depositData.balances?.bep20 || 0,6)}</strong><span>USDT</span></div><Icon name="chevron-right" size={18}/>
+            </div>
+            <div className="hw-balance-row">
+              <Icon name="usdt" size={42}/><div className="hw-token-meta"><strong>USDT</strong><span>TRON · TRC20</span></div>
+              <div className="hw-token-amount"><strong>{formatNum(depositData.balances?.trc20 || 0,6)}</strong><span>USDT</span></div><Icon name="chevron-right" size={18}/>
+            </div>
+            <div className="hw-balance-row">
+              <Icon name="ton" size={42}/><div className="hw-token-meta"><strong>TON</strong><span>Native TON deposit route</span></div>
+              <div className="hw-token-amount"><strong>{formatNum(depositData.balances?.ton || 0,8)}</strong><span>TON</span></div><Icon name="chevron-right" size={18}/>
+            </div>
+          </section>
+
+          <section className="hw-connect-card">
+            <div className="hw-connect-title">External wallet</div>
             {connectedWallet ? (
-              <div className="wallet-connected-box">
-                <div className="wc-status"><span className="wc-dot" /> Connected</div>
-                <div className="wc-addr">{connectedWallet}</div>
-                <button className="btn btn-secondary" style={{ width: '100%', marginTop: 10 }} onClick={disconnectWallet}>
-                  Disconnect
-                </button>
-              </div>
+              <><div className="hw-connected"><span className="wc-dot"/> Connected · {shortAddr(connectedWallet)}</div>
+                <button className="btn btn-secondary" style={{width:'100%',marginTop:10}} onClick={disconnectWallet}>Disconnect wallet</button></>
             ) : (
-              <div className="wallet-connect-box">
-                <p style={{ color: '#a0ffc0', fontSize: '0.85rem', marginBottom: 12 }}>
-                  Connect your external wallet (MetaMask / WalletConnect) to withdraw.
-                </p>
-                <button className="btn btn-primary" style={{ width: '100%' }} onClick={connectExternalWallet} disabled={walletConnecting}>
-                  <Icon name="wallet" size={16} /> {walletConnecting ? 'Connecting…' : 'Connect Wallet'}
-                </button>
-                <div style={{ marginTop: 14, borderTop: '1px solid rgba(0,255,136,0.15)', paddingTop: 12 }}>
-                  <div style={{ fontSize: '0.78rem', color: '#888', marginBottom: 6 }}>Or paste address manually</div>
-                  <input
-                    className="input"
-                    placeholder="0x..."
-                    value={wdWallet}
-                    onChange={(e) => setWdWallet(e.target.value.trim())}
-                  />
-                  <button
-                    className="btn btn-secondary"
-                    style={{ width: '100%', marginTop: 8 }}
-                    onClick={() => persistWallet(wdWallet)}
-                  >
-                    Save Address
-                  </button>
-                </div>
-              </div>
+              <><p>Connect your wallet to request HYPE withdrawals.</p>
+                <button className="btn btn-primary" style={{width:'100%'}} onClick={connectExternalWallet} disabled={walletConnecting}><Icon name="wallet" size={16}/>{walletConnecting?'Connecting…':'Connect Wallet'}</button>
+                <input className="input" style={{marginTop:10}} placeholder="Paste wallet address" value={wdWallet} onChange={(e)=>setWdWallet(e.target.value.trim())}/>
+                <button className="btn btn-secondary" style={{width:'100%',marginTop:8}} onClick={()=>persistWallet(wdWallet)}>Save Address</button></>
             )}
-          </div>
-
-          <div className="card">
-            <div className="card-title"><Icon name="ton" size={20} title="TON" /> TON Wallet Ownership</div>
-            {tonWallet?.address_friendly ? (
-              <div className="wallet-connected-box">
-                <div className="wc-status"><span className="wc-dot" /> TON ownership verified</div>
-                <div className="wc-addr">{tonWallet.address_friendly}</div>
-                <button className="btn btn-secondary" style={{ width: '100%', marginTop: 10 }} onClick={disconnectTonWallet}>Disconnect TON Wallet</button>
-              </div>
-            ) : (
-              <>
-                <div style={{ fontSize: '0.8rem', color: '#a0ffc0', marginBottom: 10 }}>Connect TON wallet and approve a TON Connect ownership proof. No transaction or token transfer is requested.</div>
-                <button className="btn btn-primary" style={{ width: '100%' }} onClick={connectTonWallet} disabled={walletConnecting}>
-                  <Icon name="ton" size={18} /> {walletConnecting ? 'Connecting…' : 'Connect TON Wallet'}
-                </button>
-              </>
-            )}
-          </div>
-
-          <div className="card">
-            <div className="card-title"><img src="/hype-coin.svg" alt="HYPE" style={{width:26,height:26,objectFit:'contain'}} /> Withdraw</div>
-            <div style={{ marginBottom: 10, fontSize: '0.9rem' }}>
-              <img src="/hype-coin.svg" alt="HYPE" style={{width:24,height:24,objectFit:'contain',verticalAlign:'middle'}} /> <strong style={{ color: '#00ff88' }}>{formatNum(user?.balance, 10)}</strong>
+            <div className="hw-ton-connect">
+              <div><Icon name="ton" size={20}/> TON ownership {tonWallet?.address_friendly ? 'verified' : 'not connected'}</div>
+              {tonWallet?.address_friendly ? <><small>{shortAddr(tonWallet.address_friendly)}</small><button className="btn btn-secondary" onClick={disconnectTonWallet}>Disconnect TON</button></> : <button className="btn btn-secondary" onClick={connectTonWallet} disabled={walletConnecting}>Connect TON Wallet</button>}
             </div>
-            <div style={{ marginBottom: 10, fontSize: '0.85rem', color: '#ffaa00' }}>
-              Minimum withdraw is {config?.min_withdraw || 1} HYPE
-            </div>
-            <div style={{ marginBottom: 12, fontSize: '0.85rem', color: '#00ff88' }}>
-              <Icon name="ban" size={14} /> We don’t charge any fees
-            </div>
-            <input
-              className="input"
-              placeholder="Amount (HYPE)"
-              type="number"
-              value={wdAmount}
-              onChange={(e) => setWdAmount(e.target.value)}
-            />
-            {connectedWallet && (
-              <div style={{ fontSize: '0.8rem', color: '#a0ffc0', marginBottom: 10 }}>
-                To: {shortAddr(connectedWallet)}
-              </div>
-            )}
-            <button
-              className="btn btn-primary"
-              style={{ width: '100%' }}
-              onClick={requestWithdraw}
-              disabled={!connectedWallet}
-            >
-              {connectedWallet ? 'Request Withdrawal' : 'Connect wallet first'}
-            </button>
-          </div>
+          </section>
 
-          <div className="card">
-            <div className="card-title"><Icon name="chart" size={16} /> Transaction History</div>
-            {history.length === 0 && <div style={{ color: '#777', fontSize: '0.85rem' }}>No deposit, swap or withdrawal activity yet.</div>}
-            {history.map((item) => {
-              const name = [item.first_name, item.last_name].filter(Boolean).join(' ') || (item.username ? '@' + item.username : 'User #' + item.user_id);
-              const assetIcon = String(item.asset || '').toUpperCase() === 'TON' ? 'ton' : String(item.asset || '').toUpperCase().includes('USDT') ? 'usdt' : 'hype';
-              const stamp = Number(item.created_at) * 1000;
-              return (
-                <div key={item.type + '-' + item.id} style={{ padding: '11px 0', borderBottom: '1px solid rgba(0,255,136,0.12)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
-                      {assetIcon === 'hype' ? <img src="/hype-coin.svg" alt="HYPE" style={{width:24,height:24,objectFit:'contain'}} /> : <Icon name={assetIcon} size={22} title={item.asset} />}
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: '0.86rem', fontWeight: 800 }}>{item.type === 'deposit' ? 'Deposit' : item.type === 'withdrawal' ? 'Withdrawal' : 'Swap'}</div>
-                        <div style={{ fontSize: '0.72rem', color: '#9aa' }}>{name} {item.username ? '· @' + item.username : ''}</div>
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontWeight: 800, color: item.type === 'deposit' ? '#00ff88' : '#e0ffe8' }}>
-                        {item.type === 'deposit' ? '+' : item.type === 'withdrawal' ? '−' : ''}{formatNum(item.amount, item.asset === 'TON' ? 9 : 10)} {item.asset}
-                      </div>
-                      {item.type === 'swap' && <div style={{ fontSize: '0.72rem', color: '#9aa' }}>→ {formatNum(item.to_amount, 10)} {item.to_asset}</div>}
-                      <div style={{ fontSize: '0.7rem', color: item.status === 'approved' || item.status === 'completed' ? '#00ff88' : item.status === 'rejected' ? '#ff6677' : '#ffaa00' }}>{item.status}</div>
-                    </div>
-                  </div>
-                  <div style={{ fontSize: '0.7rem', color: '#777', marginTop: 5 }}>{item.network} · {Number.isFinite(stamp) && stamp > 0 ? new Date(stamp).toLocaleString() : ''}</div>
-                  {item.tx_hash && <div style={{ fontSize: '0.68rem', color: '#667', overflowWrap: 'anywhere' }}>TX: {item.tx_hash}</div>}
-                  {item.type === 'withdrawal' && item.to_address && <div style={{ fontSize: '0.68rem', color: '#667', overflowWrap: 'anywhere' }}>To: {item.to_address}</div>}
-                </div>
-              );
+          <section className="hw-withdraw-card" id="hw-withdraw">
+            <div className="hw-withdraw-heading"><Icon name="arrow-up" size={20}/> Withdraw HYPE</div>
+            <div className="hw-available"><span>Available to withdraw</span><strong>{formatNum(user?.balance || 0,10)} HYPE</strong><small>Minimum {config?.min_withdraw || 1} HYPE</small></div>
+            <input className="input" placeholder="Amount (HYPE)" type="number" value={wdAmount} onChange={(e)=>setWdAmount(e.target.value)}/>
+            {connectedWallet && <div className="hw-to-address">To: {shortAddr(connectedWallet)}</div>}
+            <button className="btn btn-primary" style={{width:'100%',marginTop:10}} onClick={requestWithdraw} disabled={!connectedWallet}>{connectedWallet?'Request withdrawal':'Connect wallet first'}</button>
+            <div className="hw-how-title">HOW WITHDRAWALS WORK</div>
+            <div className="hw-step"><b>1</b><div><strong>Connect your wallet</strong><span>Connect once; withdrawals are sent to this address.</span></div></div>
+            <div className="hw-step"><b>2</b><div><strong>A person reviews it</strong><span>Every request is checked before payout.</span></div></div>
+            <div className="hw-step"><b>3</b><div><strong>Receive HYPE</strong><span>Once approved, the payout is processed to your wallet.</span></div></div>
+          </section>
+
+          <section className="hw-history-card">
+            <div className="hw-section-label">TRANSACTION HISTORY</div>
+            {history.length===0 && <div className="hw-empty">No deposit, swap or withdrawal activity yet.</div>}
+            {history.map((item)=>{
+              const name=[item.first_name,item.last_name].filter(Boolean).join(' ')||(item.username?'@'+item.username:'User #'+item.user_id);
+              const assetIcon=String(item.asset||'').toUpperCase()==='TON'?'ton':String(item.asset||'').toUpperCase().includes('USDT')?'usdt':String(item.asset||'').toUpperCase()==='ETH'?'eth':'hype';
+              const stamp=Number(item.created_at)*1000;
+              return <div key={item.type+'-'+item.id} className="hw-history-row"><div><strong><Icon name={assetIcon} size={19}/> {item.type==='deposit'?'Deposit':item.type==='withdrawal'?'Withdrawal':'Swap'}</strong><small>{name} · {item.network}</small></div><div><b>{item.type==='deposit'?'+':item.type==='withdrawal'?'−':''}{formatNum(item.amount,8)} {item.asset}</b><small>{item.status} · {Number.isFinite(stamp)&&stamp>0?new Date(stamp).toLocaleString():''}</small></div></div>;
             })}
-          </div>
+          </section>
         </div>
       )}
 
@@ -3051,7 +3005,7 @@ const locked = !claimed && !current;
         </button>
         <button className={`nav-item ${tab === 'swap' ? 'active' : ''}`} onClick={() => setTab('swap')}>
           <span className="nav-icon-wrap"><Icon name="arrow-left-right" size={22} /></span>
-          <span className="nav-label">Swap</span>
+          <span className="nav-label"><Icon name="repeat" size={13}/> Swap</span>
         </button>
         <button className={`nav-item ${tab === 'wallet' ? 'active' : ''}`} onClick={() => setTab('wallet')}>
           <span className="nav-icon-wrap"><Icon name="wallet" size={22} /></span>
