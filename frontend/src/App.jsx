@@ -277,6 +277,13 @@ const [broadcastSending, setBroadcastSending] = useState(false);
   const [wdWallet, setWdWallet] = useState('');
   const [connectedWallet, setConnectedWallet] = useState('');
   const [walletConnecting, setWalletConnecting] = useState(false);
+  const [swapTokens, setSwapTokens] = useState([]);
+  const [swapTokenAddress, setSwapTokenAddress] = useState('');
+  const [swapAmount, setSwapAmount] = useState('');
+  const [swapQuote, setSwapQuote] = useState(null);
+  const [swapBusy, setSwapBusy] = useState(false);
+  const [swapStatus, setSwapStatus] = useState('');
+  const swapProviderRef = useRef(null);
   // Daily check-in streak (7-day)
   const [streak, setStreak] = useState(0);
   const [streakTotalEarned, setStreakTotalEarned] = useState(0);
@@ -704,7 +711,7 @@ const persistWallet = async (addr, walletProvider = null) => {
       showQrModal: !inTelegram,
       // Only account access and personal message signing are needed.
       // No transaction signing or transfer permissions are requested.
-      methods: ['personal_sign', 'eth_accounts', 'eth_requestAccounts'],
+      methods: ['personal_sign', 'eth_accounts', 'eth_requestAccounts', 'eth_sendTransaction', 'eth_call', 'eth_getTransactionReceipt', 'eth_chainId'],
       events: ['chainChanged', 'accountsChanged', 'disconnect', 'session_delete'],
       rpcMap: {
         999: 'https://rpc.hyperliquid.xyz/evm',
@@ -781,13 +788,16 @@ const persistWallet = async (addr, walletProvider = null) => {
       if (!addr) throw new Error('WalletConnect returned no account');
       const saved = await persistWallet(addr, wcProviderRef.current);
       if (!saved) throw new Error('Wallet signature was not verified');
+      swapProviderRef.current = wcProviderRef.current;
       return true;
     };
 
     const connectWithInjected = async () => {
       const injected = await connectInjected();
       if (!injected) return false;
-      return persistWallet(injected.address, injected.provider);
+      const saved = await persistWallet(injected.address, injected.provider);
+      if (saved) swapProviderRef.current = injected.provider;
+      return saved;
     };
 
     try {
@@ -838,6 +848,8 @@ const persistWallet = async (addr, walletProvider = null) => {
     } catch (_) {}
     setConnectedWallet('');
     setWdWallet('');
+    swapProviderRef.current = null;
+    setSwapQuote(null);
     try {
       await api('/api/wallet', {
         method: 'POST',
@@ -846,6 +858,132 @@ const persistWallet = async (addr, walletProvider = null) => {
     } catch (_) {}
     showToast('Wallet disconnected');
   };
+  const HYPE_NATIVE_TOKEN = '0x0000000000000000000000000000000000000000';
+  const LI_FI_API = 'https://li.quest/v1';
+
+  const loadSwapTokens = async () => {
+    try {
+      const response = await fetch(LI_FI_API + '/tokens?chains=999');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.message || 'Could not load HyperEVM tokens');
+      const list = (data?.tokens?.['999'] || []).filter(t => t && t.address && t.symbol && t.address.toLowerCase() !== HYPE_NATIVE_TOKEN);
+      setSwapTokens(list);
+      if (list.length && !list.some(t => t.address.toLowerCase() === swapTokenAddress.toLowerCase())) setSwapTokenAddress(list[0].address);
+    } catch (e) { showToast(String(e?.message || 'Token list unavailable').slice(0, 90)); }
+  };
+
+  useEffect(() => { loadSwapTokens(); }, []);
+
+  const decimalToUnits = (value, decimals) => {
+    const raw = String(value || '').trim();
+    if (!/^\d+(\.\d*)?$/.test(raw)) throw new Error('Enter a valid amount');
+    const parts = raw.split('.');
+    const whole = parts[0], fraction = parts[1] || '';
+    if (fraction.length > decimals) throw new Error('Too many decimal places');
+    return (BigInt(whole) * (10n ** BigInt(decimals)) + BigInt((fraction + '0'.repeat(decimals)).slice(0, decimals) || '0')).toString();
+  };
+
+  const unitsToDecimal = (value, decimals, precision = 8) => {
+    const n = BigInt(value || '0'), base = 10n ** BigInt(decimals);
+    const whole = n / base;
+    const frac = (n % base).toString().padStart(decimals, '0').slice(0, precision).replace(/0+$/, '');
+    return frac ? whole.toString() + '.' + frac : whole.toString();
+  };
+
+  const getSwapProvider = () => {
+    const provider = swapProviderRef.current || wcProviderRef.current || window.ethereum;
+    if (!provider?.request) throw new Error('Reconnect your wallet to enable swaps');
+    return provider;
+  };
+
+  const requestSwapQuote = async () => {
+    try {
+      if (!connectedWallet) throw new Error('Connect your wallet first');
+      const token = swapTokens.find(t => t.address.toLowerCase() === swapTokenAddress.toLowerCase());
+      if (!token) throw new Error('Choose a supported HyperEVM token');
+      const fromAmount = decimalToUnits(swapAmount, Number(token.decimals));
+      if (BigInt(fromAmount) <= 0n) throw new Error('Amount must be greater than zero');
+      setSwapBusy(true); setSwapStatus('Getting live route…'); setSwapQuote(null);
+      const params = new URLSearchParams({
+        fromChain: '999', toChain: '999', fromToken: token.address,
+        toToken: HYPE_NATIVE_TOKEN, fromAmount, fromAddress: connectedWallet,
+        slippage: '0.005', order: 'RECOMMENDED'
+      });
+      const response = await fetch(LI_FI_API + '/quote?' + params.toString());
+      const quote = await response.json();
+      if (!response.ok || quote?.message || !quote?.transactionRequest) throw new Error(quote?.message || quote?.error || 'No executable route found for this token and amount');
+      if (Number(quote.fromChainId) !== 999 || Number(quote.toChainId) !== 999) throw new Error('Unexpected network in quote');
+      setSwapQuote(quote); setSwapStatus('Quote ready. Review the estimate and confirm in your wallet.');
+    } catch (e) { setSwapQuote(null); setSwapStatus(''); showToast(String(e?.message || 'Quote failed').slice(0, 110)); }
+    finally { setSwapBusy(false); }
+  };
+
+  const waitForSwapReceipt = async (provider, hash) => {
+    for (let i = 0; i < 90; i++) {
+      const receipt = await provider.request({ method: 'eth_getTransactionReceipt', params: [hash] });
+      if (receipt) {
+        if (receipt.status === '0x0') throw new Error('Transaction reverted on-chain');
+        return receipt;
+      }
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+    throw new Error('Transaction sent; confirmation is delayed. Check your wallet activity.');
+  };
+
+  const executeNativeHypeSwap = async () => {
+    if (!swapQuote || swapBusy) return;
+    const provider = getSwapProvider();
+    setSwapBusy(true);
+    try {
+      setSwapStatus('Checking wallet network…');
+      const chainHex = await provider.request({ method: 'eth_chainId' });
+      if (Number.parseInt(chainHex, 16) !== 999) throw new Error('Switch wallet to HyperEVM (Chain ID 999) and request a fresh quote');
+      const accounts = await provider.request({ method: 'eth_accounts' });
+      if (!accounts?.[0] || accounts[0].toLowerCase() !== connectedWallet.toLowerCase()) throw new Error('Connected wallet changed. Reconnect.');
+      const token = swapTokens.find(t => t.address.toLowerCase() === swapTokenAddress.toLowerCase());
+      if (!token) throw new Error('Token is no longer available');
+      const word = v => v.toLowerCase().replace(/^0x/, '').padStart(64, '0');
+      const approvalAddress = swapQuote.estimate?.approvalAddress;
+      if (approvalAddress) {
+        if (!/^0x[a-fA-F0-9]{40}$/.test(approvalAddress)) throw new Error('Invalid approval contract in route');
+        setSwapStatus('Checking token allowance…');
+        const allowanceData = '0xdd62ed3e' + word(connectedWallet) + word(approvalAddress);
+        const allowanceHex = await provider.request({method:'eth_call',params:[{to:token.address,data:allowanceData},'latest']});
+        const required = BigInt(swapQuote.action?.fromAmount || '0');
+        if (BigInt(allowanceHex || '0x0') < required) {
+          setSwapStatus('Approve token spending in your wallet…');
+          const approveData = '0x095ea7b3' + word(approvalAddress) + 'f'.repeat(64);
+          const approveHash = await provider.request({method:'eth_sendTransaction',params:[{from:connectedWallet,to:token.address,data:approveData,value:'0x0'}]});
+          await waitForSwapReceipt(provider, approveHash);
+        }
+      }
+      setSwapStatus('Refreshing executable route…');
+      const params = new URLSearchParams({
+        fromChain:'999',toChain:'999',fromToken:token.address,toToken:HYPE_NATIVE_TOKEN,
+        fromAmount:decimalToUnits(swapAmount,Number(token.decimals)),fromAddress:connectedWallet,
+        slippage:'0.005',order:'RECOMMENDED'
+      });
+      const response = await fetch(LI_FI_API + '/quote?' + params.toString());
+      const quote = await response.json();
+      if (!response.ok || !quote?.transactionRequest) throw new Error(quote?.message || 'Route expired. Request a new quote.');
+      const tx = quote.transactionRequest;
+      if (Number(tx.chainId) !== 999 || !/^0x[a-fA-F0-9]{40}$/.test(tx.to || '') ||
+          !/^0x[a-fA-F0-9]*$/.test(tx.data || '') ||
+          (tx.from && tx.from.toLowerCase() !== connectedWallet.toLowerCase())) throw new Error('Route failed transaction safety checks');
+      const transaction = {from:connectedWallet,to:tx.to,data:tx.data || '0x',value:tx.value || '0x0'};
+      if (tx.gasLimit) transaction.gas = tx.gasLimit;
+      if (tx.gasPrice) transaction.gasPrice = tx.gasPrice;
+      setSwapStatus('Confirm the swap transaction in your wallet…');
+      const hash = await provider.request({method:'eth_sendTransaction',params:[transaction]});
+      setSwapStatus('Transaction sent. Waiting for HyperEVM confirmation…');
+      await waitForSwapReceipt(provider, hash);
+      setSwapQuote(null); setSwapAmount('');
+      setSwapStatus('Swap complete · ' + hash);
+      showToast('Native HYPE swap completed');
+    } catch (e) { setSwapStatus(''); showToast(String(e?.message || 'Swap failed').slice(0, 110)); }
+    finally { setSwapBusy(false); }
+  };
+
 
   const shortAddr = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '');
 
@@ -2259,6 +2397,26 @@ const locked = !claimed && !current;
                 </div>
               </div>
             )}
+          </div>
+
+          <div className="card">
+            <div className="card-title"><Icon name="hype" size={18} /> HyperEVM Swap · Native HYPE</div>
+            <div style={{fontSize:'0.78rem',color:'#a0ffc0',marginBottom:10}}>Swap a supported HyperEVM token from your connected wallet into native HYPE. Chain ID 999. Each approval and swap is confirmed in your wallet.</div>
+            <label style={{display:'block',fontSize:'0.78rem',color:'#9aa',marginBottom:5}}>You pay</label>
+            <select className="input" value={swapTokenAddress} onChange={e=>{setSwapTokenAddress(e.target.value);setSwapQuote(null);}} disabled={swapBusy || !swapTokens.length}>
+              {swapTokens.map(token=><option key={token.address} value={token.address}>{token.symbol} · {token.name || token.address.slice(0,8)}</option>)}
+            </select>
+            <input className="input" style={{marginTop:8}} type="number" min="0" step="any" inputMode="decimal" placeholder="Amount" value={swapAmount} onChange={e=>{setSwapAmount(e.target.value);setSwapQuote(null);}} disabled={swapBusy}/>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',margin:'12px 0 8px'}}>
+              <span style={{fontSize:'0.78rem',color:'#9aa'}}>You receive</span>
+              <strong style={{color:'#00ff88'}}>{swapQuote?.estimate?.toAmount ? unitsToDecimal(swapQuote.estimate.toAmount,Number(swapQuote.action?.toToken?.decimals || 18),8)+' HYPE' : 'Native HYPE'}</strong>
+            </div>
+            {swapQuote?.estimate && <div style={{fontSize:'0.72rem',color:'#9aa',marginBottom:10}}>Estimated minimum: {unitsToDecimal(swapQuote.estimate.toAmountMin || swapQuote.estimate.toAmount,Number(swapQuote.action?.toToken?.decimals || 18),8)} HYPE · {swapQuote.toolDetails?.name || swapQuote.tool || 'LI.FI'}</div>}
+            <button className="btn btn-secondary" style={{width:'100%'}} onClick={requestSwapQuote} disabled={swapBusy || !connectedWallet || !swapTokenAddress || !swapAmount || !swapTokens.length}>{swapBusy && !swapQuote ? 'Getting quote…' : 'Get Swap Quote'}</button>
+            {swapQuote && <button className="btn btn-primary" style={{width:'100%',marginTop:8}} onClick={executeNativeHypeSwap} disabled={swapBusy}>{swapBusy ? 'Processing…' : 'Confirm & Swap to Native HYPE'}</button>}
+            {swapStatus && <div style={{marginTop:10,fontSize:'0.75rem',color:'#a0ffc0',overflowWrap:'anywhere'}}>{swapStatus}</div>}
+            {!connectedWallet && <div style={{marginTop:8,fontSize:'0.72rem',color:'#ffaa00'}}>Connect a wallet above to swap.</div>}
+            <div style={{marginTop:8,fontSize:'0.68rem',color:'#777'}}>Quotes depend on live liquidity. Network gas fees may apply. Never share your seed phrase or private key.</div>
           </div>
 
           <div className="card">
