@@ -588,7 +588,7 @@ const [broadcastSending, setBroadcastSending] = useState(false);
 
   const wcProviderRef = useRef(null);
 
-const persistWallet = async (addr) => {
+const persistWallet = async (addr, walletProvider = null) => {
     const clean = String(addr || '').trim();
     if (!/^0x[a-fA-F0-9]{40}$/.test(clean)) {
       showToast('Invalid EVM address');
@@ -600,7 +600,7 @@ const persistWallet = async (addr) => {
         body: JSON.stringify({ address: clean }),
       });
       if (!challenge?.message) throw new Error(challenge?.error || 'Could not prepare sign-in message');
-      const signer = wcProviderRef.current || window.ethereum;
+      const signer = walletProvider || wcProviderRef.current || window.ethereum;
       if (!signer?.request) throw new Error('Wallet session unavailable. Reconnect your wallet.');
       const signature = await signer.request({
         method: 'personal_sign',
@@ -630,7 +630,7 @@ const persistWallet = async (addr) => {
     }
     const accounts = await eth.request({ method: 'eth_requestAccounts' });
     if (!accounts?.[0]) throw new Error('Wallet returned no account');
-    return accounts[0];
+    return { address: accounts[0], provider: eth };
   };
 
   /**
@@ -751,8 +751,9 @@ const persistWallet = async (addr) => {
       try {
         const injected = await connectInjected();
         if (injected) {
-          await persistWallet(injected);
-          return;
+          const saved = await persistWallet(injected.address, injected.provider);
+          if (saved) return;
+          // If the injected provider cannot sign, continue to WalletConnect instead of stopping.
         }
       } catch (e) {
         console.warn('Injected wallet failed:', e);
@@ -762,7 +763,8 @@ const persistWallet = async (addr) => {
       try {
         const addr = await connectWalletConnect();
         if (addr) {
-          await persistWallet(addr);
+          const saved = await persistWallet(addr, wcProviderRef.current);
+          if (saved) return;
           return;
         }
         showToast('No account returned from WalletConnect');
