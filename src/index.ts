@@ -33,6 +33,7 @@ type Bindings = {
   ENERGY_COOLDOWN_SEC?: string;
   HYPE_TREASURY_ADDRESS?: string;
   HYPE_EVM_RPC?: string;
+  MONETAG_POSTBACK_SECRET?: string;
 };
 
 type TgUser = {
@@ -60,6 +61,8 @@ const DEFAULTS: Record<string, string> = {
   daily_checkin_reward: '0.0000089',
   streak_bonus: '0',
   checkin_day_rewards: JSON.stringify([0.0000089, 0.000002, 0.000006, 0.000007, 0.0000079, 0.0000089, 0.0004]),
+  ad_reward: '0.0000007854',
+  ads_enabled: '1',
 };
 
 function toUnixSeconds(value: any): number {
@@ -113,6 +116,8 @@ async function getConfig(db: D1Database, env?: Bindings) {
     daily_checkin_reward: safeNumber(await getSetting(db, 'daily_checkin_reward'), 0.0000089),
     streak_bonus: safeNumber(await getSetting(db, 'streak_bonus'), 0),
     checkin_day_rewards: dayRewards,
+    ad_reward: safeNumber(await getSetting(db, 'ad_reward'), 0.0000007854),
+    ads_enabled: (await getSetting(db, 'ads_enabled')) === '1',
     bot_username: env?.BOT_USERNAME || '',
   };
 }
@@ -273,7 +278,7 @@ async function listReferrals(db: D1Database, userId: number) {
 
 app.use('/api/*', async (c, next) => {
   const path = new URL(c.req.url).pathname;
-  if (['/api/health', '/api/config', '/api/price'].includes(path)) return next();
+  if (['/api/health', '/api/config', '/api/price', '/api/monetag/postback'].includes(path)) return next();
   const identity = await verifyTelegramInitData(c.req.header('X-Telegram-Init-Data') || '', c.env.BOT_TOKEN || '');
   if (!identity) return c.json({ error: 'Unauthorized: valid Telegram session required' }, 401);
   c.set('tgUser', identity);
@@ -954,6 +959,51 @@ app.post('/api/tap', async (c) => {
   }
 });
 
+
+// Monetag rewarded-interstitial: credit only from Monetag's signed-secret server postback.
+async function ensureAdTables(db: D1Database) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS monetag_ad_events (
+    ymid TEXT PRIMARY KEY, user_id INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+    reward REAL NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    credited_at INTEGER
+  )`).run();
+}
+app.post('/api/ads/start', async (c) => {
+  const cfg = await getConfig(c.env.DB, c.env);
+  if (!cfg.ads_enabled) return c.json({ error: 'Ads are currently disabled.' }, 403);
+  const u = await ensureUser(c.env.DB, c.env, c.get('tgUser'), null);
+  await ensureAdTables(c.env.DB);
+  const ymid = 'hype_' + u.id + '_' + crypto.randomUUID().replace(/-/g, '');
+  await c.env.DB.prepare('INSERT INTO monetag_ad_events (ymid, user_id, status, reward) VALUES (?, ?, ?, ?)')
+    .bind(ymid, u.id, 'pending', cfg.ad_reward).run();
+  return c.json({ ymid, reward: cfg.ad_reward });
+});
+app.get('/api/ads/status/:ymid', async (c) => {
+  await ensureAdTables(c.env.DB);
+  const row = await c.env.DB.prepare('SELECT status, reward FROM monetag_ad_events WHERE ymid = ? AND user_id = ?')
+    .bind(c.req.param('ymid'), c.get('tgUser').id).first<any>();
+  if (!row) return c.json({ error: 'Ad session not found.' }, 404);
+  return c.json({ status: row.status, reward: Number(row.reward) || 0 });
+});
+app.get('/api/monetag/postback', async (c) => {
+  const secret = String(c.env.MONETAG_POSTBACK_SECRET || '');
+  if (!secret || c.req.query('secret') !== secret) return c.text('Unauthorized', 401);
+  const ymid = String(c.req.query('ymid') || '');
+  const eventType = String(c.req.query('event_type') || '');
+  const rewardType = String(c.req.query('reward_event_type') || '');
+  const zoneId = String(c.req.query('zone_id') || '');
+  if (!/^hype_[1-9][0-9]*_[a-f0-9]{32}$/.test(ymid) || eventType !== 'impression' || rewardType !== 'valued' || zoneId !== '12178167') return c.text('Ignored', 200);
+  await ensureAdTables(c.env.DB);
+  const event = await c.env.DB.prepare("SELECT user_id, reward FROM monetag_ad_events WHERE ymid = ? AND status = 'pending'").bind(ymid).first<any>();
+  if (!event) return c.text('Already processed or unknown event', 200);
+  const result = await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE monetag_ad_events SET status = 'credited', credited_at = ? WHERE ymid = ? AND status = 'pending'").bind(nowSec(), ymid),
+    c.env.DB.prepare("UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE id = ? AND changes() > 0").bind(Number(event.reward), Number(event.reward), Number(event.user_id)),
+  ]);
+  if ((result[0]?.meta?.changes ?? 0) !== 1) return c.text('Duplicate', 200);
+  return c.text('OK', 200);
+});
+
 app.get('/api/tasks', async (c) => {
   try {
     const authUser = c.get('tgUser');
@@ -1301,13 +1351,17 @@ app.delete('/api/admin/tasks/:id', async (c) => {
 app.get('/api/admin/settings', async (c) => c.json({ settings: await getConfig(c.env.DB, c.env) }));
 app.post('/api/admin/settings', async (c) => {
   const b = await c.req.json().catch(() => ({}));
-  const bounds: Record<string, [number, number]> = { tap_reward: [0, 1000000], referral_reward: [0, 1000000], min_withdraw: [0.00000001, 1000000], energy_max: [1, 1000000], energy_cooldown: [60, 604800], daily_checkin_reward: [0, 1000000], streak_bonus: [0, 1000000] };
+  const bounds: Record<string, [number, number]> = { tap_reward: [0, 1000000], referral_reward: [0, 1000000], min_withdraw: [0.00000001, 1000000], energy_max: [1, 1000000], energy_cooldown: [60, 604800], daily_checkin_reward: [0, 1000000], streak_bonus: [0, 1000000], ad_reward: [0, 1000000] };
   const values: Array<[string, string]> = [];
   for (const [k, [minValue, maxValue]] of Object.entries(bounds)) {
     if (b[k] === undefined || b[k] === null || b[k] === '') continue;
     const n = Number(b[k]);
     if (!Number.isFinite(n) || n < minValue || n > maxValue) return c.json({ error: `Invalid ${k}` }, 400);
     values.push([k, String(n)]);
+  }
+  if (b.ads_enabled !== undefined) {
+    if (typeof b.ads_enabled !== 'boolean') return c.json({ error: 'Invalid ads_enabled' }, 400);
+    values.push(['ads_enabled', b.ads_enabled ? '1' : '0']);
   }
   if (b.checkin_day_rewards !== undefined) {
     if (!Array.isArray(b.checkin_day_rewards) || b.checkin_day_rewards.length !== 7 || b.checkin_day_rewards.some((v: any) => !Number.isFinite(Number(v)) || Number(v) < 0 || Number(v) > 1000000)) return c.json({ error: 'checkin_day_rewards must contain 7 valid non-negative numbers' }, 400);
