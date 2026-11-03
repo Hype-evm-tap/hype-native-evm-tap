@@ -1490,7 +1490,9 @@ showToast(data.error || 'Already checked in today');
   const connectTonWallet = async () => {
     try {
       setWalletConnecting(true);
-      let ui = tonConnectUIRef.current;
+      // TonConnectUI registers the global custom element "tc-root".
+      // Keep one instance across React remounts to prevent duplicate registration.
+      let ui = tonConnectUIRef.current || window.__HYPE_TONCONNECT_UI__ || null;
       if (!ui) {
         // Load the official browser bundle outside Vite's module graph.
         // This avoids Solid/Vite interop errors such as "src is not a function".
@@ -1556,6 +1558,9 @@ showToast(data.error || 'Already checked in today');
             tonProofVerifyingRef.current = false;
           }
         });
+        tonConnectUIRef.current = ui;
+        window.__HYPE_TONCONNECT_UI__ = ui;
+      } else {
         tonConnectUIRef.current = ui;
       }
       if (ui.connected) {
