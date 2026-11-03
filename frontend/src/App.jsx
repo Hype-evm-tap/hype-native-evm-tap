@@ -302,6 +302,9 @@ const [broadcastSending, setBroadcastSending] = useState(false);
   const [adStatus, setAdStatus] = useState('');
   const [adUsage, setAdUsage] = useState({ daily_limit: 10, ads_used: 0, ads_remaining: 10, retry_after: 0 });
   const [adResetCountdown, setAdResetCountdown] = useState(0);
+  const [adHistory, setAdHistory] = useState([]);
+  const [adHistoryOpen, setAdHistoryOpen] = useState(false);
+  const [adHistoryBusy, setAdHistoryBusy] = useState(false);
 
   const tapQueue = useRef(0);
   const tapTimer = useRef(null);
@@ -1478,6 +1481,21 @@ showToast(data.error || 'Already checked in today');
     return () => clearInterval(timer);
   }, [adUsage.retry_after]);
 
+  const loadAdHistory = async () => {
+    setAdHistoryBusy(true);
+    try {
+      const data = await api('/api/ads/history');
+      if (data.error) {
+        showToast(data.error);
+        return;
+      }
+      setAdHistory(Array.isArray(data.history) ? data.history : []);
+      setAdHistoryOpen(true);
+    } finally {
+      setAdHistoryBusy(false);
+    }
+  };
+
   const watchRewardedAd = async () => {
     if (adBusy || adUsage.ads_remaining <= 0) return;
     setAdBusy(true);
@@ -2653,6 +2671,32 @@ const locked = !claimed && !current;
               </div>
             );
           })}
+          <div className="card" style={{ marginTop: 14 }}>
+            <button className="btn btn-primary" style={{ width: '100%' }} disabled={adHistoryBusy} onClick={loadAdHistory}>
+              <Icon name="history" size={16} /> {adHistoryBusy ? 'Loading Ads History…' : 'View Ads Reward History'}
+            </button>
+            {adHistoryOpen && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <strong style={{ color: '#00ff88' }}>Ads Reward History</strong>
+                  <button className="btn btn-secondary" onClick={() => setAdHistoryOpen(false)}>Close</button>
+                </div>
+                {adHistory.length === 0 ? (
+                  <div style={{ color: '#999', textAlign: 'center', padding: 14 }}>No ad rewards yet.</div>
+                ) : adHistory.map((item) => (
+                  <div key={item.ymid} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '10px 0', borderBottom: '1px solid rgba(0,255,136,0.12)' }}>
+                    <div>
+                      <div style={{ fontWeight: 700 }}>{item.status === 'credited' ? 'Reward credited' : 'Waiting for server confirmation'}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#888' }}>{item.credited_at ? new Date(item.credited_at * 1000).toLocaleString() : new Date(item.created_at * 1000).toLocaleString()}</div>
+                    </div>
+                    <div style={{ color: item.status === 'credited' ? '#00ff88' : '#e0bd65', fontWeight: 800, whiteSpace: 'nowrap' }}>
+                      {item.status === 'credited' ? '+' : ''}{formatNum(item.reward || 0, 18)} HYPE
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
