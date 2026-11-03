@@ -2985,24 +2985,6 @@ const locked = !claimed && !current;
           </div>
 
           <div className="card">
-            <div className="card-title"><Icon name="ton" size={20} title="TON" /> TON Wallet Connect</div>
-            {tonWallet?.address_friendly ? (
-              <div className="wallet-connected-box">
-                <div className="wc-status"><span className="wc-dot" /> TON wallet {tonWallet.verified ? 'connected & verified' : 'connected'}</div>
-                <div className="wc-addr">{tonWallet.address_friendly}</div>
-                <button className="btn btn-secondary" style={{width:'100%',marginTop:10}} onClick={disconnectTonWallet}>Disconnect TON Wallet</button>
-              </div>
-            ) : (
-              <>
-                <div style={{fontSize:'0.8rem',color:'#a0ffc0',marginBottom:10}}>Connect Telegram Wallet, Tonkeeper or another TON Connect compatible wallet. Ownership proof is required; no transfer is requested.</div>
-                <button className="btn btn-primary" style={{width:'100%'}} onClick={connectTonWallet} disabled={walletConnecting}>
-                  <Icon name="ton" size={18} /> {walletConnecting ? 'Connecting…' : 'Connect TON Wallet'}
-                </button>
-              </>
-            )}
-          </div>
-
-          <div className="card">
             <div className="card-title"><img src="/hype-icon.png" alt="HYPE" style={{width:26,height:26,objectFit:'contain',borderRadius:'50%'}} /> Withdraw</div>
             <div style={{ marginBottom: 10, fontSize: '0.9rem' }}>
               <img src="/hype-icon.png" alt="HYPE" style={{width:24,height:24,objectFit:'contain',borderRadius:'50%',verticalAlign:'middle'}} /> <strong style={{ color: '#00ff88' }}>{formatNum(user?.balance, 10)}</strong>
