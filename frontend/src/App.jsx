@@ -2459,10 +2459,9 @@ const locked = !claimed && !current;
           <div className="card">
             <div className="card-title"><Icon name="arrow-left-right" size={18}/> Deposit → HYPE Swap</div>
             <div style={{fontSize:'0.78rem',color:'#a0ffc0',lineHeight:1.55,marginBottom:12}}>Every successfully verified deposit is automatically added to the HYPE conversion queue. HYPE is credited to your balance only after the conversion is completed and the incoming HYPE transfer is verified on HyperEVM.</div>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:8}}>
-              <div style={{background:'#101b16',border:'1px solid #254634',borderRadius:10,padding:10}}><div style={{fontSize:'0.68rem',color:'#9aa'}}>ETH</div><strong style={{fontSize:'0.9rem'}}>{Number(depositData.balances?.eth||0).toFixed(6)}</strong></div>
-              <div style={{background:'#101b16',border:'1px solid #254634',borderRadius:10,padding:10}}><div style={{fontSize:'0.68rem',color:'#9aa'}}>USDC</div><strong style={{fontSize:'0.9rem'}}>{(Number(depositData.balances?.usdc_eth||0)).toFixed(4)}</strong></div>
-              <div style={{background:'#101b16',border:'1px solid #254634',borderRadius:10,padding:10}}><div style={{fontSize:'0.68rem',color:'#9aa'}}>USDC</div><strong style={{fontSize:'0.9rem'}}>{Number(depositData.balances?.usdc_eth||0).toFixed(6)}</strong></div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:8}}>
+              <div style={{background:'#101b16',border:'1px solid #254634',borderRadius:10,padding:10}}><div style={{fontSize:'0.68rem',color:'#9aa'}}>ETH deposited</div><strong style={{fontSize:'0.9rem'}}>{Number(depositData.balances?.eth||0).toFixed(6)} ETH</strong></div>
+              <div style={{background:'#101b16',border:'1px solid #254634',borderRadius:10,padding:10}}><div style={{fontSize:'0.68rem',color:'#9aa'}}>USDC deposited</div><strong style={{fontSize:'0.9rem'}}>{Number(depositData.balances?.usdc_eth||0).toFixed(4)} USDC</strong></div>
             </div>
             <div style={{fontSize:'0.7rem',color:'#ffaa66',marginTop:10}}>Conversion is currently operator-settled, not an instant on-chain swap. Your HYPE balance updates after settlement.</div>
           </div>
@@ -2480,7 +2479,7 @@ const locked = !claimed && !current;
               {depositNetwork === 'usdc_eth' ? <>Send only <Icon name="usdc" size={17} title="USDC" /> (USDC ERC20) on Ethereum Mainnet to this address:</> : <>Send native <Icon name="eth" size={17} title="ETH" /> only on Ethereum Mainnet to this address:</>}
             </div>
             <div style={{ padding: 10, borderRadius: 8, background: 'rgba(0,255,136,0.07)', wordBreak: 'break-all', fontSize: '0.78rem' }}>
-              '0x87Ad7Fe8Be9eeEa2E388F80f4C5fcF450E037463'
+              0x87Ad7Fe8Be9eeEa2E388F80f4C5fcF450E037463
             </div>
             <button className="btn btn-secondary" style={{ width: '100%', marginTop: 8 }} onClick={() => {
               const address = '0x87Ad7Fe8Be9eeEa2E388F80f4C5fcF450E037463';
