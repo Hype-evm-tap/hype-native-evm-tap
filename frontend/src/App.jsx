@@ -239,6 +239,7 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const [adminHistory, setAdminHistory] = useState([]);
   const [tonWallet, setTonWallet] = useState(null);
+  const [evmSessionAddress, setEvmSessionAddress] = useState('');
   const tonConnectUIRef = useRef(null);
   const tonProofVerifyingRef = useRef(false);
   const [depositNetwork, setDepositNetwork] = useState('eth');
@@ -782,15 +783,17 @@ const persistWallet = async (addr, walletProvider = null) => {
     wcProviderRef.current = provider;
 
     provider.on('accountsChanged', (accounts) => {
-      if (accounts?.[0]) { setConnectedWallet(''); setWdWallet(''); }
+      if (accounts?.[0]) { setConnectedWallet(''); setWdWallet(''); setEvmSessionAddress(accounts[0]); }
       else {
         setConnectedWallet('');
         setWdWallet('');
+        setEvmSessionAddress('');
       }
     });
     provider.on('disconnect', () => {
       setConnectedWallet('');
       setWdWallet('');
+      setEvmSessionAddress('');
       wcProviderRef.current = null;
     });
     provider.on('session_delete', () => {
@@ -825,6 +828,7 @@ const persistWallet = async (addr, walletProvider = null) => {
     const connectWithWalletConnect = async () => {
       const addr = await connectWalletConnect();
       if (!addr) throw new Error('WalletConnect returned no account');
+      setEvmSessionAddress(addr);
       const saved = await persistWallet(addr, wcProviderRef.current);
       if (!saved) throw new Error('Wallet ownership verification failed. Please try again.');
       swapProviderRef.current = wcProviderRef.current;
@@ -834,6 +838,7 @@ const persistWallet = async (addr, walletProvider = null) => {
     const connectWithInjected = async () => {
       const injected = await connectInjected();
       if (!injected) return false;
+      setEvmSessionAddress(injected.address);
       const saved = await persistWallet(injected.address, injected.provider);
       if (saved) swapProviderRef.current = injected.provider;
       return saved;
@@ -887,6 +892,7 @@ const persistWallet = async (addr, walletProvider = null) => {
     } catch (_) {}
     setConnectedWallet('');
     setWdWallet('');
+    setEvmSessionAddress('');
     try {
       await api('/api/wallet', {
         method: 'POST',
@@ -1506,6 +1512,8 @@ showToast(data.error || 'Already checked in today');
             setTonWallet(null);
             return;
           }
+          const liveTonAddress = String(wallet.account?.address || '');
+          if (liveTonAddress) setTonWallet({ address_friendly: liveTonAddress, address_raw: liveTonAddress, verified: false });
 
           // TonConnect restores an existing session when Telegram returns from
           // Tonkeeper. Restored Wallet objects do not contain connectItems/tonProof;
@@ -1521,6 +1529,7 @@ showToast(data.error || 'Already checked in today');
                 setTonWallet({
                   address_friendly: linked.address_friendly,
                   address_raw: linked.address_raw,
+                  verified: true,
                 });
                 return;
               }
@@ -1530,7 +1539,7 @@ showToast(data.error || 'Already checked in today');
             // Keep the session connected; ask for a fresh proof only if it has
             // never been verified by this app. Disconnecting here causes a loop
             // every time Telegram restores the Mini App.
-            showToast('TON wallet connected. Reconnect once to verify ownership.');
+            showToast('TON wallet connected. Ownership verification pending.');
             return;
           }
 
@@ -1550,7 +1559,7 @@ showToast(data.error || 'Already checked in today');
               }),
             });
             if (!result.success) throw new Error(result.error || 'TON ownership proof failed');
-            setTonWallet({ address_friendly: result.address, address_raw: result.address_raw });
+            setTonWallet({ address_friendly: result.address, address_raw: result.address_raw, verified: true });
             showToast('TON wallet ownership verified');
           } catch (e) {
             showToast(String(e?.message || 'TON verification failed').slice(0, 100));
@@ -1588,6 +1597,7 @@ showToast(data.error || 'Already checked in today');
           setTonWallet({
             address_friendly: saved.wallet.address_friendly,
             address_raw: saved.wallet.address_raw,
+            verified: true,
           });
           showToast('TON wallet is already connected');
           return;
@@ -1619,6 +1629,7 @@ showToast(data.error || 'Already checked in today');
             setTonWallet({
               address_friendly: linked.address_friendly,
               address_raw: linked.address_raw,
+              verified: true,
             });
             showToast('TON wallet connected and verified');
             recovered = true;
@@ -1852,9 +1863,9 @@ user: tg?.initDataUnsafe?.user,
           )}
         </div>
         <div className="header-right">
-          {connectedWallet ? (
-            <button className="connect-wallet-btn connected" onClick={disconnectWallet} title={connectedWallet}>
-              <Icon name="wallet" size={14} /> {shortAddr(connectedWallet)}
+          {(connectedWallet || evmSessionAddress) ? (
+            <button className="connect-wallet-btn connected" onClick={disconnectWallet} title={connectedWallet || evmSessionAddress}>
+              <Icon name="wallet" size={14} /> {connectedWallet ? shortAddr(connectedWallet) : `Connected · ${shortAddr(evmSessionAddress)}`} 
             </button>
           ) : (
             <button className="connect-wallet-btn" onClick={connectExternalWallet} disabled={walletConnecting}>
@@ -2564,7 +2575,7 @@ const locked = !claimed && !current;
 
           <div className="card" style={{marginTop:12}}>
             <div className="card-title"><Icon name="ton" size={18} /> TON Wallet for Swap / Deposit</div>
-            {tonWallet?.address_friendly ? <div className="wc-status"><span className="wc-dot" /> {tonWallet.address_friendly}</div> :
+            {tonWallet?.address_friendly ? <div className="wc-status"><span className="wc-dot" /> TON {tonWallet.verified ? 'Connected & Verified' : 'Connected · Verification pending'}<div className="wc-addr">{tonWallet.address_friendly}</div></div> :
               <button className="btn btn-secondary" style={{width:'100%'}} onClick={connectTonWallet} disabled={walletConnecting}>
                 <Icon name="ton" size={17} /> {walletConnecting ? 'Connecting…' : 'Connect TON Wallet'}
               </button>}
@@ -2674,10 +2685,10 @@ const locked = !claimed && !current;
         <div className="page">
           <div className="card">
             <div className="card-title"><Icon name="wallet" size={16} /> Wallet</div>
-            {connectedWallet ? (
+            {(connectedWallet || evmSessionAddress) ? (
               <div className="wallet-connected-box">
-                <div className="wc-status"><span className="wc-dot" /> EVM Wallet Connected</div>
-                <div className="wc-addr">{connectedWallet}</div>
+                <div className="wc-status"><span className="wc-dot" /> EVM Wallet {connectedWallet ? 'Connected & Verified' : 'Connected · Verification pending'}</div>
+                <div className="wc-addr">{connectedWallet || evmSessionAddress}</div>
                 <button className="btn btn-secondary" style={{width:'100%',marginTop:10}} onClick={disconnectWallet}>Disconnect</button>
               </div>
             ) : (
@@ -2694,7 +2705,7 @@ const locked = !claimed && !current;
             <div className="card-title"><Icon name="ton" size={20} title="TON" /> TON Wallet Connect</div>
             {tonWallet?.address_friendly ? (
               <div className="wallet-connected-box">
-                <div className="wc-status"><span className="wc-dot" /> TON wallet connected & verified</div>
+                <div className="wc-status"><span className="wc-dot" /> TON wallet {tonWallet.verified ? 'connected & verified' : 'connected · verification pending'}</div>
                 <div className="wc-addr">{tonWallet.address_friendly}</div>
                 <button className="btn btn-secondary" style={{width:'100%',marginTop:10}} onClick={disconnectTonWallet}>Disconnect TON Wallet</button>
               </div>
