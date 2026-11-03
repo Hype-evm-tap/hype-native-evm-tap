@@ -693,7 +693,8 @@ const persistWallet = async (addr, walletProvider = null) => {
     let eth = window.ethereum;
     if (!eth) return null;
     if (eth.providers?.length) {
-      eth = eth.providers.find((p) => p.isMetaMask) || eth.providers[0];
+      const providers = eth.providers;
+      eth = providers.find((p) => p.isTrust || p.isTrustWallet) || providers.find((p) => p.isMetaMask && !p.isBraveWallet) || providers.find((p) => p.isRabby) || providers.find((p) => p.isCoinbaseWallet) || providers[0];
     }
     const accounts = await eth.request({ method: 'eth_requestAccounts' });
     if (!accounts?.[0]) throw new Error('Wallet returned no account');
