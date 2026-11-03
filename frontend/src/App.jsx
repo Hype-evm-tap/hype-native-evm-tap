@@ -187,6 +187,16 @@ const SVGS = {
       <path d="m16.71 13.88.7.71-2.82 2.82" />
     </svg>
   ),
+  activity: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 12h4l3-8 4 16 3-8h4" />
+    </svg>
+  ),
+  "arrow-left-right": (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 3l4 4-4 4M3 7h18M7 21l-4-4 4-4M21 17H3" />
+    </svg>
+  ),
   medal: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M7.21 15 2.66 7.14a2 2 0 0 1 .13-2.2L4.4 2.8A2 2 0 0 1 6 2h12a2 2 0 0 1 1.6.8l1.6 2.14a2 2 0 0 1 .14 2.2L17.79 15" />
