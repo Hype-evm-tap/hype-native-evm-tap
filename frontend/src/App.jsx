@@ -43,6 +43,7 @@ const SVGS = {
   usdt: (<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#26A17B"/><path fill="#fff" d="M17.9 17.4v-.1c-.1 0-.8.1-2 .1s-1.9-.1-2-.1v.1c-4.4-.2-7.7-1-7.7-2s3.3-1.8 7.7-2v3.2c.1 0 1 .1 2 .1s1.9-.1 2-.1v-3.2c4.4.2 7.7 1 7.7 2s-3.3 1.8-7.7 2Zm0-5.2V9.4h6.2V6.5H7.9v2.9h6.2v2.8C9 12.4 5 13.6 5 15.1v3.1c0 1.5 4 2.7 9.1 2.9v4.4h3.8v-4.4c5.1-.2 9.1-1.4 9.1-2.9v-3.1c0-1.5-4-2.7-9.1-2.9Z"/></svg>),
   hype: (<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#101510" stroke="#00E887" strokeWidth="1.5"/><path d="M8 7h4v7h8V7h4v18h-4v-7h-8v7H8V7Z" fill="#00E887"/></svg>),
   telegram: (<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.7 3.3 18.6 20c-.2 1.2-.9 1.5-1.8.9l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5.1 9.3-8.4c.4-.4-.1-.6-.6-.2L6 13.5 1 12c-1.1-.3-1.1-1 .2-1.5L20.5 3c.9-.3 1.6.2 1.2 1.3Z"/></svg>),
+  video: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="13" height="14" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg>),
   youtube: (<svg viewBox="0 0 24 24" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8ZM9.6 15.6V8.4L15.8 12l-6.2 3.6Z"/></svg>),
   globe: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg>),
   zap: (
@@ -299,6 +300,8 @@ const [broadcastSending, setBroadcastSending] = useState(false);
   const [checkinRewards, setCheckinRewards] = useState([0.0000089, 0.000002, 0.000006, 0.000007, 0.0000079, 0.0000089, 0.0004]);
   const [adBusy, setAdBusy] = useState(false);
   const [adStatus, setAdStatus] = useState('');
+  const [adUsage, setAdUsage] = useState({ daily_limit: 10, ads_used: 0, ads_remaining: 10, retry_after: 0 });
+  const [adResetCountdown, setAdResetCountdown] = useState(0);
 
   const tapQueue = useRef(0);
   const tapTimer = useRef(null);
@@ -1307,13 +1310,42 @@ showToast(data.error || 'Already checked in today');
     if (adminTab === 'referrals') loadAdminReferrals();
   }, [adminTab, tab, user]);
 
+  const loadAdUsage = async () => {
+    const usage = await api('/api/ads/usage');
+    if (!usage.error) {
+      setAdUsage({
+        daily_limit: Number(usage.daily_limit) || 10,
+        ads_used: Number(usage.ads_used) || 0,
+        ads_remaining: Math.max(0, Number(usage.ads_remaining) || 0),
+        retry_after: Math.max(0, Number(usage.retry_after) || 0),
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (tab === 'tap' && user && config?.ads_enabled !== false) loadAdUsage();
+  }, [tab, user, config?.ads_enabled]);
+
+  useEffect(() => {
+    setAdResetCountdown(adUsage.retry_after || 0);
+    if (!adUsage.retry_after) return;
+    const timer = setInterval(() => setAdResetCountdown((v) => Math.max(0, v - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [adUsage.retry_after]);
+
   const watchRewardedAd = async () => {
-    if (adBusy) return;
+    if (adBusy || adUsage.ads_remaining <= 0) return;
     setAdBusy(true);
     setAdStatus('Preparing ad…');
     try {
       const session = await api('/api/ads/start', { method: 'POST', body: JSON.stringify({}) });
-      if (session.error || !session.ymid) throw new Error(session.error || 'Could not start ad session');
+      if (session.ads_used !== undefined) {
+        setAdUsage({ daily_limit: 10, ads_used: Number(session.ads_used) || 0, ads_remaining: Number(session.ads_remaining) || 0, retry_after: 0 });
+      }
+      if (session.error || !session.ymid) {
+        await loadAdUsage();
+        throw new Error(session.error || 'Could not start ad session');
+      }
       const showAd = window.show_12178167;
       if (typeof showAd !== 'function') throw new Error('Monetag SDK is still loading. Please try again.');
       const result = await showAd({ ymid: session.ymid, requestVar: 'tasks_watch_ad' });
@@ -2382,14 +2414,27 @@ const locked = !claimed && !current;
           </div>
 
           {config?.ads_enabled !== false && (
-            <div className="card" style={{ marginBottom: 14 }}>
-              <div className="card-title"><Icon name="gift" size={17} /> Watch Ad & Earn HYPE</div>
+            <div className="card" style={{ marginBottom: 14, border: '1px solid rgba(0,232,135,.28)' }}>
+              <div className="card-title"><Icon name="video" size={17} /> Watch Video & Earn HYPE</div>
               <div style={{ fontSize: '0.82rem', color: '#9bb8a7', marginBottom: 12 }}>
                 Earn {formatNum(config?.ad_reward ?? 0.0000007854, 18)} HYPE after a monetized ad is confirmed.
               </div>
-              <button className="btn btn-primary" style={{ width: '100%' }} disabled={adBusy} onClick={watchRewardedAd}>
-                {adBusy ? 'Loading ad…' : '▶ Watch Ad & Earn'}
+              <button className="btn btn-primary" style={{ width: '100%' }} disabled={adBusy || adUsage.ads_remaining <= 0} onClick={watchRewardedAd}>
+                {adBusy ? 'Loading video…' : adUsage.ads_remaining <= 0 ? 'Daily ads completed' : <><Icon name="video" size={16} /> Watch Video & Earn</>}
               </button>
+              <div style={{ marginTop: 10, textAlign: 'center', fontSize: '0.82rem', fontWeight: 800, color: adUsage.ads_remaining > 0 ? '#00e887' : '#e0bd65', letterSpacing: '.02em' }}>
+                {adUsage.ads_remaining}/10 ads left today
+              </div>
+              <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
+                {Array.from({ length: 10 }, (_, i) => (
+                  <span key={i} style={{ height: 5, flex: 1, borderRadius: 8, background: i < adUsage.ads_remaining ? 'rgba(0,232,135,.9)' : 'rgba(255,255,255,.14)' }} />
+                ))}
+              </div>
+              {adUsage.ads_remaining <= 0 && (
+                <div style={{ marginTop: 8, textAlign: 'center', color: '#b9a77b', fontSize: '0.72rem' }}>
+                  Resets in {formatTime(adResetCountdown)}
+                </div>
+              )}
               {adStatus && <div className="task-verify-note" style={{ marginTop: 8 }}>{adStatus}</div>}
             </div>
           )}
