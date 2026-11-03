@@ -1327,9 +1327,7 @@ showToast(data.error || 'Already checked in today');
   const joinTask = async (task) => {
     const taskId = task.id;
     if (!task.link) return showToast('Task link missing');
-    const taskType = String(task.type || '').toLowerCase();
-    const isYouTube = taskType === 'youtube' || /youtube\.com|youtu\.be/i.test(task.link);
-    const isBoost = taskType === 'boost';
+    const isYouTube = String(task.type || '').toLowerCase() === 'youtube' || /youtube\.com|youtu\.be/i.test(task.link);
     setTaskVerification((s) => ({ ...s, [taskId]: isYouTube ? 'waiting_return' : 'waiting' }));
     try {
       if (window.Telegram?.WebApp?.openTelegramLink && /t\.me\//i.test(task.link)) {
@@ -1342,16 +1340,6 @@ showToast(data.error || 'Already checked in today');
     } catch (_) {}
     if (isYouTube) {
       showToast('YouTube par jaakar wapas HYPE Tap me aayein. Phir 5-second timer chalega.');
-      return;
-    }
-    if (isBoost) {
-      showToast('Boost apply hone ke baad verification ho rahi hai…');
-      for (let seconds = 5; seconds > 0; seconds -= 1) {
-        setTaskCountdown((s) => ({ ...s, [taskId]: seconds }));
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-      setTaskCountdown((s) => ({ ...s, [taskId]: 0 }));
-      await verifyTask(taskId);
       return;
     }
     for (let seconds = 5; seconds > 0; seconds -= 1) {
@@ -2352,21 +2340,50 @@ const locked = !claimed && !current;
 
           <h3 className="section-heading"><Icon name="gift" size={18} /> Tasks & Rewards</h3>
           {tasks.length === 0 && <div className="card">No tasks yet. Check back later.</div>}
-          {tasks.filter((t) => String(t.type || '').toLowerCase() !== 'boost' || window.Telegram?.WebApp?.initDataUnsafe?.user?.is_premium === true).map((t) => {
+          {tasks.filter((t) => {
+            const taskType = String(t.type || '').toLowerCase();
+            // Boost tasks only visible to Telegram Premium users
+            if (taskType === 'boost') {
+              return Boolean(tg?.initDataUnsafe?.user?.is_premium);
+            }
+            return true;
+          }).map((t) => {
             const status = taskVerification[t.id] || 'not_member';
             const verified = status === 'verified' || pendingTasks.includes(t.id);
             const waiting = status === 'waiting' || status === 'checking';
             const taskLink = String(t.link || '').toLowerCase();
             const taskType = String(t.type || '').toLowerCase();
-            const platformIcon = taskType === 'boost' ? 'zap' : taskType === 'youtube' || /youtube\.com|youtu\.be/.test(taskLink) ? 'youtube' : taskType === 'telegram' || /t\.me\//.test(taskLink) ? 'telegram' : 'globe';
+            const platformIcon =
+              taskType === 'youtube' || /youtube\.com|youtu\.be/.test(taskLink)
+                ? 'youtube'
+                : taskType === 'boost'
+                  ? 'zap'
+                  : taskType === 'telegram' || /t\.me\//.test(taskLink)
+                    ? 'telegram'
+                    : 'globe';
+            const actionLabel =
+              taskType === 'boost'
+                ? (waiting ? `Wait ${taskCountdown[t.id] || ''}s` : status === 'waiting_return' ? 'Return' : 'Boost Channel')
+                : (waiting ? `Wait ${taskCountdown[t.id] || ''}s` : status === 'waiting_return' ? 'Return to HYPE Tap' : 'Join');
             return (
               <div className="card task-card" key={t.id}>
                 <div className="task-card-content">
                   <div className="task-platform-icon"><Icon name={platformIcon} size={22} /></div>
                   <div className="task-info">
-                    <div className="task-title">{t.title}</div>
-                    {taskType === 'youtube' && <a href={t.link} onClick={(e) => { e.preventDefault(); joinTask(t); }} style={{ display: 'block', fontSize: 11, opacity: 0.78, overflowWrap: 'anywhere', marginTop: 4 }}>YouTube link ↗</a>}
-                    {taskType === 'boost' && <div className="task-verify-note">Telegram Premium users only · active channel boost required</div>}
+                    <div className="task-title">
+                      {t.title}
+                      {taskType === 'boost' && (
+                        <span style={{ marginLeft: 6, fontSize: 11, color: '#f0d878', fontWeight: 700 }}>★ Premium</span>
+                      )}
+                    </div>
+                    {taskType === 'youtube' && (
+                      <a href={t.link} onClick={(e) => { e.preventDefault(); joinTask(t); }} style={{ display: 'block', fontSize: 11, opacity: 0.78, overflowWrap: 'anywhere', marginTop: 4 }}>
+                        YouTube link ↗
+                      </a>
+                    )}
+                    {taskType === 'boost' && (
+                      <div style={{ fontSize: 11, opacity: 0.78, marginTop: 4 }}>Boost the channel → claim reward</div>
+                    )}
                     <div className="task-reward">+{formatNum(t.reward, 12)} HYPE</div>
                   </div>
                   <div className="task-action">
@@ -2378,13 +2395,16 @@ const locked = !claimed && !current;
                       </button>
                     ) : (
                       <button className="btn btn-primary task-action-btn" disabled={waiting || status === 'waiting_return'} onClick={() => joinTask(t)}>
-                        {waiting ? `Wait ${taskCountdown[t.id] || ''}s` : status === 'waiting_return' ? 'Return to HYPE Tap' : 'Join'}
+                        {actionLabel}
                       </button>
                     )}
                   </div>
                 </div>
                 {waiting && <div className="task-verify-note">{taskCountdown[t.id] > 0 ? `Wait ${taskCountdown[t.id]}s to claim` : 'Checking task…'}</div>}
                 {status === 'waiting_return' && <div className="task-verify-note">YouTube link opened. Return here to start the 5-second claim timer.</div>}
+                {taskType === 'boost' && status === 'not_member' && (
+                  <div className="task-verify-note">Open the channel, boost it with Telegram Premium, then come back and claim.</div>
+                )}
               </div>
             );
           })}
@@ -3082,13 +3102,17 @@ const locked = !claimed && !current;
               <div className="card">
                 <div className="card-title">Add New Task</div>
                 <input className="input" placeholder="Title" value={newTask.title} onChange={(e) => setNewTask({ ...newTask, title: e.target.value })} />
-                <select className="input" value={newTask.type} onChange={(e) => setNewTask({ ...newTask, type: e.target.value, reward: e.target.value === 'boost' ? '0.12' : newTask.reward })}>
+                <select className="input" value={newTask.type} onChange={(e) => setNewTask({ ...newTask, type: e.target.value })}>
                   <option value="telegram">Telegram Channel</option>
-                  <option value="boost">Boost Channel (Premium only)</option>
                   <option value="youtube">YouTube Visit Task</option>
+                  <option value="boost">Boost Channel (Premium only)</option>
                 </select>
                 <input className="input" placeholder="Link" value={newTask.link} onChange={(e) => setNewTask({ ...newTask, link: e.target.value })} />
-                <div className="muted" style={{ fontSize: 12 }}>{newTask.type === 'telegram' ? 'Public t.me channel link required. Add the bot as a channel admin for automatic membership verification.' : newTask.type === 'boost' ? 'Public t.me channel link required. Only Premium users with an active boost can claim. Add the bot as a channel admin.' : 'YouTube link opens for the user; they return to HYPE Tap and wait 5 seconds before claiming.'}</div>
+                <div className="muted" style={{ fontSize: 12 }}>
+                  {newTask.type === 'telegram' && 'Public t.me channel link required. Add the bot as a channel admin for automatic membership verification.'}
+                  {newTask.type === 'youtube' && 'YouTube link opens for the user; they return to HYPE Tap and wait 5 seconds before claiming.'}
+                  {newTask.type === 'boost' && 'Public t.me channel link. Only Telegram Premium users see this task. Bot must be admin. Reward is credited after boost is verified via getUserChatBoosts. Recommended reward: 0.12 HYPE.'}
+                </div>
 
 <input className="input" placeholder="Reward HYPE" value={newTask.reward} onChange={(e) => setNewTask({ ...newTask, reward: e.target.value })} />
                 <button className="btn btn-primary" style={{ width: '100%' }} onClick={addTask}>
