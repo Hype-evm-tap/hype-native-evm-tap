@@ -997,8 +997,7 @@ showToast(data.error || 'Already checked in today');
             energy: finalEnergy,
             energy_reset_at: data.energy_reset_at || 0,
           };
-        });
-        if (finalEnergy <= 0) {
+        });        if (finalEnergy <= 0) {
           const ra =
             Number(data.energy_reset_at) ||
             Math.floor(Date.now() / 1000) + (config?.energy_cooldown || 3600);
@@ -1997,8 +1996,7 @@ user: tg?.initDataUnsafe?.user,
                   <button
                     key={iv}
                     className={`hl-iv ${chartInterval === iv ? 'active' : ''}`}
-                    onClick={() => setChartInterval(iv)}
-                  >
+                    onClick={() => setChartInterval(iv)}                  >
                     {iv}
                   </button>
                 ))}
@@ -2997,8 +2995,7 @@ const locked = !claimed && !current;
                       {formatNum(u.total_earned, 6)} earned • Bal {formatNum(u.balance, 4)} • Inv {u.invite_count || 0}
                     </div>
                     <div style={{ fontSize: '0.7rem', color: '#666' }}>ID: {u.id}</div>
-                  </div>
-                  <button className="btn btn-outline" style={{ padding: '6px 10px', fontSize: '0.75rem' }}
+                  </div>                  <button className="btn btn-outline" style={{ padding: '6px 10px', fontSize: '0.75rem' }}
                     onClick={() => { setEditUserId(String(u.id)); loadUserDetails(u.id); window.scrollTo(0, 0); }}>
                     Edit
                   </button>
