@@ -1507,7 +1507,7 @@ showToast(data.error || 'Already checked in today');
               script.addEventListener('load', onLoad, { once: true });
               script.addEventListener('error', onError, { once: true });
             } else {
-              script.src = 'https://unpkg.com/@tonconnect/ui@5.0.2/dist/tonconnect-ui.min.js';
+              script.src = 'https://unpkg.com/@tonconnect/ui@2.0.2/dist/tonconnect-ui.min.js';
               script.async = true;
               script.dataset.tonconnectUi = 'true';
               script.addEventListener('load', onLoad, { once: true });
