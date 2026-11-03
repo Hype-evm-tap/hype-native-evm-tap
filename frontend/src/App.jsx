@@ -1501,26 +1501,47 @@ showToast(data.error || 'Already checked in today');
         // Load the official browser bundle outside Vite's module graph.
         // This avoids Solid/Vite interop errors such as "src is not a function".
         if (!window.TON_CONNECT_UI?.TonConnectUI) {
-          await new Promise((resolve, reject) => {
-            const existing = document.querySelector('script[data-tonconnect-ui]');
-            const script = existing || document.createElement('script');
-            const onLoad = () => window.TON_CONNECT_UI?.TonConnectUI
-              ? resolve()
-              : reject(new Error('TON Connect UI bundle loaded but API is unavailable'));
-            const onError = () => reject(new Error('Could not load TON Connect UI. Check your connection and retry.'));
-            if (existing) {
-              if (window.TON_CONNECT_UI?.TonConnectUI) return resolve();
-              script.addEventListener('load', onLoad, { once: true });
-              script.addEventListener('error', onError, { once: true });
-            } else {
-              script.src = 'https://unpkg.com/@tonconnect/ui@2.0.2/dist/tonconnect-ui.min.js';
-              script.async = true;
-              script.dataset.tonconnectUi = 'true';
-              script.addEventListener('load', onLoad, { once: true });
-              script.addEventListener('error', onError, { once: true });
-              document.head.appendChild(script);
+          // Remove a stale/failed tag first; attaching listeners to an already-fired
+          // script load event can leave the connect button waiting forever.
+          document.querySelectorAll('script[data-tonconnect-ui]').forEach((node) => node.remove());
+          const sources = [
+            'https://unpkg.com/@tonconnect/ui@2.0.11/dist/tonconnect-ui.min.js',
+            'https://cdn.jsdelivr.net/npm/@tonconnect/ui@2.0.11/dist/tonconnect-ui.min.js',
+          ];
+          let lastError;
+          for (const src of sources) {
+            try {
+              await new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                const timeout = setTimeout(() => {
+                  script.remove();
+                  reject(new Error('TON Connect UI download timed out'));
+                }, 12000);
+                script.src = src;
+                script.async = true;
+                script.dataset.tonconnectUi = 'true';
+                script.onload = () => {
+                  clearTimeout(timeout);
+                  window.TON_CONNECT_UI?.TonConnectUI
+                    ? resolve()
+                    : reject(new Error('TON Connect UI API was not found after download'));
+                };
+                script.onerror = () => {
+                  clearTimeout(timeout);
+                  script.remove();
+                  reject(new Error('TON Connect UI CDN unavailable'));
+                };
+                document.head.appendChild(script);
+              });
+              if (window.TON_CONNECT_UI?.TonConnectUI) break;
+            } catch (error) {
+              lastError = error;
+              document.querySelectorAll('script[data-tonconnect-ui]').forEach((node) => node.remove());
             }
-          });
+          }
+          if (!window.TON_CONNECT_UI?.TonConnectUI) {
+            throw new Error(lastError?.message || 'Could not load TON Connect UI. Check your connection and retry.');
+          }
         }
         const TonConnectUI = window.TON_CONNECT_UI?.TonConnectUI;
         if (typeof TonConnectUI !== 'function') throw new Error('TON Connect UI is unavailable. Please retry.');
