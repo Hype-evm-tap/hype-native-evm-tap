@@ -3470,9 +3470,9 @@ body {
   overflow: visible !important;
 }
 
-/* HYPE coin floats closer above the platform */
+/* HYPE platform moved closer beneath the floating coin */
 .hype-platform-img {
-  top: 52% !important;
+  top: 46% !important;
 }
 
 
