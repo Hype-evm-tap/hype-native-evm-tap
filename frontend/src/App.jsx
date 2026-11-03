@@ -682,21 +682,14 @@ const persistWallet = async (addr, walletProvider = null) => {
     // chains is REQUIRED (empty optionalChains-only → "configuration not found")
     const provider = await EthereumProvider.init({
       projectId,
-      // HYPE EVM uses Hyperliquid EVM mainnet (chain ID 999).
-      // Keep Ethereum and BSC optional so multi-chain wallets can still connect.
-      chains: [999],
-      optionalChains: [1, 56],
+      // Wallet sign-in is chain-independent and only proves address ownership.
+      // Require the widely supported Ethereum namespace; offer HyperEVM as optional.
+      chains: [1],
+      optionalChains: [999, 56],
       showQrModal: true,
-      methods: [
-        'eth_sendTransaction',
-        'eth_signTransaction',
-        'eth_sign',
-        'personal_sign',
-        'eth_signTypedData',
-        'eth_signTypedData_v4',
-        'eth_accounts',
-        'eth_requestAccounts',
-      ],
+      // Only account access and personal message signing are needed.
+      // No transaction signing or transfer permissions are requested.
+      methods: ['personal_sign', 'eth_accounts', 'eth_requestAccounts'],
       events: ['chainChanged', 'accountsChanged', 'disconnect', 'session_delete'],
       rpcMap: {
         999: 'https://rpc.hyperliquid.xyz/evm',
