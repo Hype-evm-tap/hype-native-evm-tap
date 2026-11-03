@@ -1326,8 +1326,10 @@ showToast(data.error || 'Already checked in today');
   const joinTask = async (task) => {
     const taskId = task.id;
     if (!task.link) return showToast('Task link missing');
-    const isYouTube = String(task.type || '').toLowerCase() === 'youtube' || /youtube\.com|youtu\.be/i.test(task.link);
-    setTaskVerification((s) => ({ ...s, [taskId]: isYouTube ? 'waiting_return' : 'waiting' }));
+    const taskType = String(task.type || '').toLowerCase();
+    const isYouTube = taskType === 'youtube' || /youtube\.com|youtu\.be/i.test(task.link);
+    const isManualLink = taskType === 'link';
+    setTaskVerification((s) => ({ ...s, [taskId]: (isYouTube || isManualLink) ? 'waiting_return' : 'waiting' }));
     try {
       if (window.Telegram?.WebApp?.openTelegramLink && /t\.me\//i.test(task.link)) {
         window.Telegram.WebApp.openTelegramLink(task.link);
@@ -1337,8 +1339,8 @@ showToast(data.error || 'Already checked in today');
         window.open(task.link, '_blank', 'noopener,noreferrer');
       }
     } catch (_) {}
-    if (isYouTube) {
-      showToast('YouTube par jaakar wapas HYPE Tap me aayein. Phir 5-second timer chalega.');
+    if (isYouTube || isManualLink) {
+      showToast('Link open hua. Wapas HYPE Tap me aayein; phir 5-second verification timer chalega.');
       return;
     }
     for (let seconds = 5; seconds > 0; seconds -= 1) {
@@ -2355,7 +2357,7 @@ const locked = !claimed && !current;
               taskType === 'youtube' || /youtube\.com|youtu\.be/.test(taskLink)
                 ? 'youtube'
                 : taskType === 'boost'
-                  ? 'zap'
+                  ? 'telegram'
                   : taskType === 'telegram' || /t\.me\//.test(taskLink)
                     ? 'telegram'
                     : 'globe';
@@ -2374,9 +2376,9 @@ const locked = !claimed && !current;
                         <span style={{ marginLeft: 6, fontSize: 11, color: '#f0d878', fontWeight: 700 }}>★ Premium</span>
                       )}
                     </div>
-                    {taskType === 'youtube' && (
+                    {(taskType === 'youtube' || taskType === 'link') && (
                       <a href={t.link} onClick={(e) => { e.preventDefault(); joinTask(t); }} style={{ display: 'block', fontSize: 11, opacity: 0.78, overflowWrap: 'anywhere', marginTop: 4 }}>
-                        YouTube link ↗
+                        {taskType === 'youtube' ? 'YouTube link ↗' : 'Open link ↗'}
                       </a>
                     )}
                     {taskType === 'boost' && (
@@ -2399,7 +2401,7 @@ const locked = !claimed && !current;
                   </div>
                 </div>
                 {waiting && <div className="task-verify-note">{taskCountdown[t.id] > 0 ? `Wait ${taskCountdown[t.id]}s to claim` : 'Checking task…'}</div>}
-                {status === 'waiting_return' && <div className="task-verify-note">YouTube link opened. Return here to start the 5-second claim timer.</div>}
+                {status === 'waiting_return' && <div className="task-verify-note">Link opened. Return here to start the 5-second claim timer.</div>}
                 {taskType === 'boost' && status === 'not_member' && (
                   <div className="task-verify-note">Open the channel, boost it with Telegram Premium, then come back and claim.</div>
                 )}
@@ -3102,12 +3104,14 @@ const locked = !claimed && !current;
                 <select className="input" value={newTask.type} onChange={(e) => setNewTask({ ...newTask, type: e.target.value })}>
                   <option value="telegram">Telegram Channel</option>
                   <option value="youtube">YouTube Visit Task</option>
+                  <option value="link">External Link Visit</option>
                   <option value="boost">Boost Channel (Premium only)</option>
                 </select>
                 <input className="input" placeholder="Link" value={newTask.link} onChange={(e) => setNewTask({ ...newTask, link: e.target.value })} />
                 <div className="muted" style={{ fontSize: 12 }}>
                   {newTask.type === 'telegram' && 'Public t.me channel link required. Add the bot as a channel admin for automatic membership verification.'}
                   {newTask.type === 'youtube' && 'YouTube link opens for the user; they return to HYPE Tap and wait 5 seconds before claiming.'}
+                  {newTask.type === 'link' && 'Any valid HTTPS link. User opens it, returns to HYPE Tap, and waits 5 seconds before claiming.'}
                   {newTask.type === 'boost' && 'Public t.me channel link. Only Telegram Premium users see this task. Bot must be admin. Reward is credited after boost is verified via getUserChatBoosts. Recommended reward: 0.12 HYPE.'}
                 </div>
 
