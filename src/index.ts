@@ -13,7 +13,7 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { recoverMessageAddress } from 'viem';
+import { parseUnits, recoverMessageAddress } from 'viem';
 import { Address, Cell, contractAddress, loadStateInit, WalletContractV1R1, WalletContractV1R2, WalletContractV1R3, WalletContractV2R1, WalletContractV2R2, WalletContractV3R1, WalletContractV3R2, WalletContractV4 as WalletContractV4R2, WalletContractV5R1 } from '@ton/ton';
 
 type Bindings = {
@@ -31,6 +31,8 @@ type Bindings = {
   REFERRAL_REWARD?: string;
   ENERGY_MAX?: string;
   ENERGY_COOLDOWN_SEC?: string;
+  HYPE_TREASURY_ADDRESS?: string;
+  HYPE_EVM_RPC?: string;
 };
 
 type TgUser = {
@@ -314,8 +316,66 @@ const USDT_CONTRACTS = {
 const ETHEREUM_USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
 const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 
+
+async function ensureDepositSwapTables(db: D1Database) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS deposit_swap_ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
+    deposit_network TEXT NOT NULL, deposit_tx_hash TEXT NOT NULL, asset TEXT NOT NULL,
+    amount TEXT NOT NULL, entry_type TEXT NOT NULL CHECK (entry_type IN ('deposit','reserve','swap_debit','swap_credit','release','withdrawal')),
+    reference_type TEXT, reference_id TEXT, idempotency_key TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'posted' CHECK (status IN ('pending','posted','reversed')),
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    UNIQUE (deposit_network, deposit_tx_hash, entry_type, idempotency_key)
+  )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS deposit_swap_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, ledger_deposit_id INTEGER NOT NULL,
+    request_key TEXT NOT NULL UNIQUE, from_network TEXT NOT NULL, from_asset TEXT NOT NULL,
+    from_amount TEXT NOT NULL, to_asset TEXT NOT NULL DEFAULT 'HYPE' CHECK (to_asset = 'HYPE'),
+    quoted_hype_amount TEXT, received_hype_amount TEXT, provider TEXT, quote_reference TEXT,
+    source_tx_hash TEXT, swap_tx_hash TEXT,
+    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','processing','submitted','completed','failed','refunded')),
+    error_code TEXT, error_message TEXT,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')), updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+  )`).run();
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_deposit_swap_swap_tx_unique ON deposit_swap_orders(swap_tx_hash) WHERE swap_tx_hash IS NOT NULL AND swap_tx_hash <> ''").run();
+}
+
 async function ensureDepositTable(db: D1Database) {
   await db.prepare('CREATE TABLE IF NOT EXISTS crypto_deposits (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, network TEXT NOT NULL, tx_hash TEXT NOT NULL, amount TEXT NOT NULL, token TEXT NOT NULL, from_address TEXT, to_address TEXT NOT NULL, created_at INTEGER NOT NULL, UNIQUE(network, tx_hash))').run();
+}
+async function ensureWithdrawalTxColumn(db: D1Database) {
+  try { await db.prepare("ALTER TABLE withdrawals ADD COLUMN tx_hash TEXT NOT NULL DEFAULT ''").run(); } catch {}
+  try { await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_withdrawals_tx_hash_unique ON withdrawals(tx_hash) WHERE tx_hash IS NOT NULL AND tx_hash <> ''").run(); } catch {}
+}
+async function verifyHyperevmNativeTransfer(env: Bindings, txHashInput: string, recipientInput: string, minAmountInput: string, expectedSenderInput?: string) {
+  const txHash = String(txHashInput || '').trim();
+  const recipient = String(recipientInput || '').trim().toLowerCase();
+  const expectedSender = String(expectedSenderInput || '').trim().toLowerCase();
+  if (!/^0x[a-fA-F0-9]{64}$/.test(txHash)) throw new Error('Enter a valid HyperEVM transaction hash.');
+  if (!/^0x[a-f0-9]{40}$/.test(recipient)) throw new Error('Invalid treasury or recipient wallet address.');
+  if (expectedSender && !/^0x[a-f0-9]{40}$/.test(expectedSender)) throw new Error('HYPE_TREASURY_ADDRESS is not configured correctly.');
+  let minimum: bigint;
+  try { minimum = parseUnits(String(minAmountInput), 18); } catch { throw new Error('Invalid HYPE amount.'); }
+  if (minimum <= 0n) throw new Error('HYPE amount must be greater than zero.');
+  const rpc = env.HYPE_EVM_RPC || 'https://rpc.hyperliquid.xyz/evm';
+  const call = async (method: string, params: any[]) => {
+    const response = await fetch(rpc, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+    if (!response.ok) throw new Error('HyperEVM RPC is unavailable. Try again later.');
+    const payload: any = await response.json();
+    if (payload.error) throw new Error('HyperEVM RPC verification failed: ' + String(payload.error.message || 'unknown error'));
+    return payload.result;
+  };
+  const chainId = await call('eth_chainId', []);
+  if (String(chainId).toLowerCase() !== '0x3e7') throw new Error('RPC is not connected to HyperEVM mainnet (chain ID 999).');
+  const [tx, receipt] = await Promise.all([call('eth_getTransactionByHash', [txHash]), call('eth_getTransactionReceipt', [txHash])]);
+  if (!tx || !receipt) throw new Error('Transaction is not yet confirmed on HyperEVM.');
+  if (String(receipt.status).toLowerCase() !== '0x1') throw new Error('HyperEVM transaction failed.');
+  if (String(tx.to || '').toLowerCase() !== recipient) throw new Error('Transaction recipient does not match the expected wallet.');
+  if (expectedSender && String(tx.from || '').toLowerCase() !== expectedSender) throw new Error('Transaction sender does not match the configured HYPE treasury wallet.');
+  if (String(tx.input || '0x').toLowerCase() !== '0x') throw new Error('Only a direct native HYPE transfer is accepted for settlement.');
+  const value = BigInt(String(tx.value || '0x0'));
+  if (value < minimum) throw new Error('Confirmed HYPE transfer is smaller than the amount being credited or paid.');
+  return { tx_hash: txHash, from: String(tx.from || '').toLowerCase(), to: recipient, amount: formatUnits(value, 18) };
 }
 function formatUnits(raw: bigint, decimals: number): string {
   const base = 10n ** BigInt(decimals), whole = raw / base;
@@ -434,15 +494,17 @@ async function ensureActivityTables(db: D1Database) {
 }
 
 async function verifyTonDeposit(hashInput: string, apiKey: string) {
-  if (!apiKey) throw new Error('TON verification is not configured. Contact support.');
+  // TON Center allows unauthenticated public requests at a strict low rate.
+  // Keep the API key optional so TON deposits still work on a fresh deployment.
   const hash = tonHashHex(hashInput);
   if (!hash) throw new Error('Enter a valid TON transaction hash (64-character hex or TON base64 hash).');
   const walletRaw = tonRawAddress(DEPOSIT_WALLETS.ton);
   if (!walletRaw) throw new Error('TON deposit wallet configuration is invalid.');
   const url = 'https://toncenter.com/api/v3/transactions?account=' + encodeURIComponent(DEPOSIT_WALLETS.ton) + '&hash=' + encodeURIComponent(hash) + '&limit=10';
-  const response = await fetch(url, { headers: { 'X-API-Key': apiKey } });
+  const response = await fetch(url, apiKey ? { headers: { 'X-API-Key': apiKey } } : {});
   if (!response.ok) {
     if (response.status === 404) throw new Error('TON transaction was not found for the deposit wallet.');
+    if (response.status === 429) throw new Error('TON Center public rate limit reached. Retry shortly or configure TONCENTER_API_KEY in Cloudflare.');
     throw new Error('TON blockchain verification service unavailable. Try again shortly.');
   }
   const data: any = await response.json();
@@ -612,8 +674,23 @@ app.post('/api/deposits/verify', async (c) => {
     }
     const amount = String(verified.amount);
     if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) return c.json({ error: 'Invalid on-chain transfer amount.' }, 400);
+    await ensureDepositSwapTables(c.env.DB);
     const inserted = await c.env.DB.prepare('INSERT OR IGNORE INTO crypto_deposits (user_id, network, tx_hash, amount, token, from_address, to_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(userId, network, normalizedHash, amount, verified.token || (network === 'ton' ? 'TON' : 'USDT'), verified.from || '', verified.to, nowSec()).run();
     if ((inserted.meta?.changes ?? 0) === 0) return c.json({ error: 'This transaction has already been credited.' }, 409);
+    const asset = String(verified.token || (network === 'ton' ? 'TON' : 'USDT')).toUpperCase();
+    const ledgerKey = 'deposit:' + network + ':' + normalizedHash;
+    const ledgerInsert = await c.env.DB.prepare(
+      "INSERT OR IGNORE INTO deposit_swap_ledger (user_id, deposit_network, deposit_tx_hash, asset, amount, entry_type, reference_type, reference_id, idempotency_key, status) VALUES (?, ?, ?, ?, ?, 'deposit', 'crypto_deposit', ?, ?, 'posted')"
+    ).bind(userId, network, normalizedHash, asset, amount, normalizedHash, ledgerKey).run();
+    const ledger = await c.env.DB.prepare(
+      "SELECT id FROM deposit_swap_ledger WHERE idempotency_key = ?"
+    ).bind(ledgerKey).first<any>();
+    if (ledger?.id) {
+      const requestKey = 'swap:' + network + ':' + normalizedHash;
+      await c.env.DB.prepare(
+        "INSERT OR IGNORE INTO deposit_swap_orders (user_id, ledger_deposit_id, request_key, from_network, from_asset, from_amount, source_tx_hash, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued')"
+      ).bind(userId, ledger.id, requestKey, network, asset, amount, normalizedHash).run();
+    }
     const { results } = await c.env.DB.prepare('SELECT id, network, tx_hash, amount, token, created_at FROM crypto_deposits WHERE user_id = ? ORDER BY id DESC LIMIT 30').bind(userId).all();
     const totals = await c.env.DB.prepare('SELECT network, SUM(CAST(amount AS REAL)) AS amount FROM crypto_deposits WHERE user_id = ? GROUP BY network').bind(userId).all();
     const balances: any = { ton: 0, bep20: 0, trc20: 0 };
@@ -963,6 +1040,7 @@ app.post('/api/referrals', async (c) => {
 
 app.post('/api/withdraw', async (c) => {
   try {
+    await ensureWithdrawalTxColumn(c.env.DB);
     const body = await c.req.json().catch(() => ({}));
     const u = await ensureUser(c.env.DB, c.env, c.get('tgUser'), null);
     const amount = Number(body.amount);
@@ -981,6 +1059,7 @@ app.post('/api/withdraw', async (c) => {
 });
 
 app.get('/api/history', async (c) => {
+  await ensureWithdrawalTxColumn(c.env.DB);
   const userId = c.get('tgUser').id;
   await ensureActivityTables(c.env.DB);
   const { results } = await c.env.DB.prepare(`
@@ -992,7 +1071,7 @@ app.get('/api/history', async (c) => {
       FROM crypto_deposits d JOIN users u ON u.id = d.user_id WHERE d.user_id = ?
       UNION ALL
       SELECT w.id, 'withdrawal' AS type, 'HYPE' AS asset, CAST(w.amount AS TEXT) AS amount, 'HyperEVM' AS network,
-        '' AS tx_hash, w.status AS status, CAST(strftime('%s', w.created_at) AS INTEGER) AS created_at,
+        w.tx_hash AS tx_hash, w.status AS status, CAST(strftime('%s', w.created_at) AS INTEGER) AS created_at,
         u.id AS user_id, u.username, u.first_name, u.last_name, '' AS from_address,
         w.wallet_address AS to_address, '' AS to_asset, '' AS to_amount
       FROM withdrawals w JOIN users u ON u.id = w.user_id WHERE w.user_id = ?
@@ -1007,6 +1086,7 @@ app.get('/api/history', async (c) => {
   return c.json({ history: results || [] });
 });
 app.get('/api/admin/history', async (c) => {
+  await ensureWithdrawalTxColumn(c.env.DB);
   await ensureActivityTables(c.env.DB);
   const { results } = await c.env.DB.prepare(`
     SELECT * FROM (
@@ -1017,7 +1097,7 @@ app.get('/api/admin/history', async (c) => {
       FROM crypto_deposits d JOIN users u ON u.id = d.user_id
       UNION ALL
       SELECT w.id, 'withdrawal' AS type, 'HYPE' AS asset, CAST(w.amount AS TEXT) AS amount, 'HyperEVM' AS network,
-        '' AS tx_hash, w.status AS status, CAST(strftime('%s', w.created_at) AS INTEGER) AS created_at,
+        w.tx_hash AS tx_hash, w.status AS status, CAST(strftime('%s', w.created_at) AS INTEGER) AS created_at,
         u.id AS user_id, u.username, u.first_name, u.last_name, '' AS from_address,
         w.wallet_address AS to_address, '' AS to_asset, '' AS to_amount
       FROM withdrawals w JOIN users u ON u.id = w.user_id
@@ -1033,6 +1113,7 @@ app.get('/api/admin/history', async (c) => {
 });
 
 app.get('/api/withdrawals', async (c) => {
+  await ensureWithdrawalTxColumn(c.env.DB);
   const authUser = c.get('tgUser');
   const { results } = await c.env.DB.prepare('SELECT * FROM withdrawals WHERE user_id = ? ORDER BY id DESC LIMIT 50').bind(authUser.id).all();
   return c.json({ withdrawals: results || [] });
@@ -1040,6 +1121,7 @@ app.get('/api/withdrawals', async (c) => {
 
 app.post('/api/withdrawals', async (c) => {
   try {
+    await ensureWithdrawalTxColumn(c.env.DB);
     const u = await ensureUser(c.env.DB, c.env, c.get('tgUser'), null);
     const { results } = await c.env.DB.prepare('SELECT * FROM withdrawals WHERE user_id = ? ORDER BY id DESC LIMIT 50').bind(u.id).all();
     return c.json({ withdrawals: results || [] });
@@ -1047,6 +1129,60 @@ app.post('/api/withdrawals', async (c) => {
 });
 
 // Admin
+
+app.get('/api/admin/deposit-swaps', async (c) => {
+  await ensureDepositSwapTables(c.env.DB);
+  const status = String(c.req.query('status') || 'queued');
+  const allowed = ['queued','processing','submitted','completed','failed','refunded','all'];
+  if (!allowed.includes(status)) return c.json({ error: 'Invalid status filter' }, 400);
+  const where = status === 'all' ? '' : 'WHERE o.status = ?';
+  const query = `SELECT o.id, o.user_id, u.username, u.first_name, o.from_network, o.from_asset,
+    o.from_amount, o.to_asset, o.status, o.source_tx_hash, o.swap_tx_hash, o.error_code,
+    o.error_message, o.created_at, o.updated_at
+    FROM deposit_swap_orders o LEFT JOIN users u ON u.id = o.user_id ${where}
+    ORDER BY o.id DESC LIMIT 200`;
+  const result = status === 'all'
+    ? await c.env.DB.prepare(query).all()
+    : await c.env.DB.prepare(query).bind(status).all();
+  return c.json({ orders: result.results || [] });
+});
+app.post('/api/admin/deposit-swaps/:id', async (c) => {
+  const id = Number(c.req.param('id'));
+  const body = await c.req.json().catch(() => ({}));
+  const action = String(body.action || '');
+  if (!Number.isSafeInteger(id) || id <= 0 || !['approve','reject','complete'].includes(action)) return c.json({ error: 'Invalid deposit swap action' }, 400);
+  await ensureDepositSwapTables(c.env.DB);
+  if (action === 'complete') {
+    const order = await c.env.DB.prepare("SELECT o.* FROM deposit_swap_orders o WHERE o.id = ? AND o.status = 'processing'").bind(id).first<any>();
+    if (!order) return c.json({ error: 'Swap must be approved and processing before settlement.' }, 409);
+    const treasury = String(c.env.HYPE_TREASURY_ADDRESS || '').trim().toLowerCase();
+    if (!/^0x[a-f0-9]{40}$/.test(treasury)) return c.json({ error: 'Configure HYPE_TREASURY_ADDRESS in Cloudflare Worker variables before settling swaps.' }, 503);
+    const hypeAmount = String(body.hype_amount || '').trim();
+    let transfer: any;
+    try { transfer = await verifyHyperevmNativeTransfer(c.env, String(body.tx_hash || ''), treasury, hypeAmount); }
+    catch (e: any) { return c.json({ error: e?.message || 'Could not verify HYPE settlement.' }, 400); }
+    const amount = Number(hypeAmount);
+    if (!Number.isFinite(amount) || amount <= 0 || Number(transfer.amount) + 1e-18 < amount) return c.json({ error: 'Verified transfer does not cover the HYPE amount.' }, 400);
+    await ensureActivityTables(c.env.DB);
+    const ledgerKey = 'swap-credit:order:' + id;
+    const results = await c.env.DB.batch([
+      c.env.DB.prepare("UPDATE deposit_swap_orders SET status = 'completed', received_hype_amount = ?, swap_tx_hash = ?, provider = 'manual-hyperevm-settlement', error_code = NULL, error_message = NULL, updated_at = ? WHERE id = ? AND status = 'processing'").bind(hypeAmount, transfer.tx_hash, nowSec(), id),
+      c.env.DB.prepare("INSERT OR IGNORE INTO deposit_swap_ledger (user_id, deposit_network, deposit_tx_hash, asset, amount, entry_type, reference_type, reference_id, idempotency_key, status) SELECT user_id, from_network, source_tx_hash, 'HYPE', ?, 'swap_credit', 'deposit_swap_order', ?, ?, 'posted' FROM deposit_swap_orders WHERE id = ? AND status = 'completed' AND changes() > 0").bind(hypeAmount, String(id), ledgerKey, id),
+      c.env.DB.prepare("UPDATE users SET balance = balance + ? WHERE id = (SELECT user_id FROM deposit_swap_orders WHERE id = ?) AND changes() > 0").bind(amount, id),
+      c.env.DB.prepare("INSERT INTO swap_history (user_id, from_asset, to_asset, from_amount, to_amount, tx_hash, status, created_at) SELECT user_id, from_asset, 'HYPE', from_amount, ?, ?, 'completed', ? FROM deposit_swap_orders WHERE id = ? AND status = 'completed' AND changes() > 0").bind(hypeAmount, transfer.tx_hash, nowSec(), id)
+    ]);
+    if ((results[0]?.meta?.changes ?? 0) !== 1) return c.json({ error: 'Swap order was settled by another request.' }, 409);
+    return c.json({ success: true, status: 'completed', hype_amount: hypeAmount, tx_hash: transfer.tx_hash });
+  }
+  const nextStatus = action === 'approve' ? 'processing' : 'failed';
+  const result = await c.env.DB.prepare("UPDATE deposit_swap_orders SET status = ?, error_code = ?, error_message = ?, updated_at = ? WHERE id = ? AND status = 'queued'")
+    .bind(nextStatus, action === 'approve' ? null : 'ADMIN_REJECTED',
+      action === 'approve' ? 'Approved. Complete the external conversion and submit the confirmed HYPE transfer to the configured treasury.' : 'Rejected by admin. The source deposit remains in the deposit wallet and must be refunded manually.',
+      nowSec(), id).run();
+  if ((result.meta?.changes ?? 0) !== 1) return c.json({ error: 'Order is no longer awaiting approval.' }, 409);
+  return c.json({ success: true, status: nextStatus, swap_executed: false });
+});
+
 app.get('/api/admin/stats', async (c) => {
   const users = (await c.env.DB.prepare('SELECT COUNT(*) AS c FROM users').first<any>())?.c || 0;
   const earned = (await c.env.DB.prepare('SELECT SUM(total_earned) AS s FROM users').first<any>())?.s || 0;
@@ -1056,6 +1192,7 @@ app.get('/api/admin/stats', async (c) => {
 });
 
 app.get('/api/admin/withdrawals', async (c) => {
+  await ensureWithdrawalTxColumn(c.env.DB);
   const status = c.req.query('status') || 'pending';
   if (!['pending', 'processing', 'approved', 'rejected'].includes(status)) return c.json({ error: 'Invalid status' }, 400);
   const { results } = await c.env.DB.prepare(
@@ -1065,14 +1202,27 @@ app.get('/api/admin/withdrawals', async (c) => {
 });
 
 app.post('/api/admin/withdrawals/:id', async (c) => {
+  await ensureWithdrawalTxColumn(c.env.DB);
   const body = await c.req.json().catch(() => ({}));
-  const statusMap: Record<string, string> = { approve: 'approved', reject: 'rejected', processing: 'processing' };
-  const status = statusMap[body.action];
-  if (!status) return c.json({ error: 'Invalid action' }, 400);
+  const action = String(body.action || '');
   const id = Number(c.req.param('id'));
   if (!Number.isSafeInteger(id) || id <= 0) return c.json({ error: 'Invalid withdrawal id' }, 400);
+  if (action === 'approve') {
+    const wd = await c.env.DB.prepare("SELECT * FROM withdrawals WHERE id = ? AND status IN ('pending','processing')").bind(id).first<any>();
+    if (!wd) return c.json({ error: 'Withdrawal not found or already processed.' }, 409);
+    const treasury = String(c.env.HYPE_TREASURY_ADDRESS || '').trim().toLowerCase();
+    if (!/^0x[a-f0-9]{40}$/.test(treasury)) return c.json({ error: 'Configure HYPE_TREASURY_ADDRESS in Cloudflare Worker variables before confirming payouts.' }, 503);
+    let transfer: any;
+    try { transfer = await verifyHyperevmNativeTransfer(c.env, String(body.tx_hash || ''), String(wd.wallet_address || ''), String(wd.amount), treasury); }
+    catch (e: any) { return c.json({ error: e?.message || 'Could not verify HYPE payout.' }, 400); }
+    const result = await c.env.DB.prepare("UPDATE withdrawals SET status = 'approved', tx_hash = ?, processed_at = ? WHERE id = ? AND status IN ('pending','processing') AND tx_hash = ''").bind(transfer.tx_hash, nowSec(), id).run();
+    if ((result.meta?.changes ?? 0) !== 1) return c.json({ error: 'Withdrawal was already settled or changed.' }, 409);
+    return c.json({ success: true, status: 'approved', tx_hash: transfer.tx_hash });
+  }
+  if (!['reject','processing'].includes(action)) return c.json({ error: 'Invalid action' }, 400);
+  const status = action === 'reject' ? 'rejected' : 'processing';
   const statements = [
-    c.env.DB.prepare("UPDATE withdrawals SET status = ?, processed_at = strftime('%s','now') WHERE id = ? AND status IN ('pending','processing')").bind(status, id),
+    c.env.DB.prepare("UPDATE withdrawals SET status = ?, processed_at = CASE WHEN ? = 'rejected' THEN strftime('%s','now') ELSE processed_at END WHERE id = ? AND status IN ('pending','processing')").bind(status, status, id),
     c.env.DB.prepare("UPDATE users SET balance = balance + (SELECT amount FROM withdrawals WHERE id = ?) WHERE id = (SELECT user_id FROM withdrawals WHERE id = ?) AND ? = 'rejected' AND changes() > 0").bind(id, id, status),
   ];
   const results = await c.env.DB.batch(statements);

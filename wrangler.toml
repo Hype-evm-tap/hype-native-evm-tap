@@ -12,6 +12,7 @@ database_id = "5210a709-0c6c-4d69-8954-2c88e0a1b647"
 ADMIN_ID = "8990854464"
 BOT_USERNAME = "Hype_nativeevm_bot"
 WALLETCONNECT_PROJECT_ID = "497590964e53b66542b60f62c6d8997e"
+HYPE_TREASURY_ADDRESS = "0x87Ad7Fe8Be9eeEa2E388F80f4C5fcF450E037463"
 MIN_WITHDRAW = "2"
 TAP_REWARD = "0.0000000695"
 REFERRAL_REWARD = "0.00008526"
@@ -23,3 +24,20 @@ directory = "./frontend/dist"
 binding = "ASSETS"
 run_worker_first = true
 not_found_handling = "single-page-application"
+
+# Isolated preview environment. Never point preview builds at production D1.
+[previews.vars]
+ADMIN_ID = "0"
+BOT_USERNAME = "Hype_nativeevm_bot"
+WALLETCONNECT_PROJECT_ID = "497590964e53b66542b60f62c6d8997e"
+HYPE_TREASURY_ADDRESS = "0x87Ad7Fe8Be9eeEa2E388F80f4C5fcF450E037463"
+MIN_WITHDRAW = "2"
+TAP_REWARD = "0.0000000695"
+REFERRAL_REWARD = "0.00008526"
+ENERGY_MAX = "1000"
+ENERGY_COOLDOWN_SEC = "3600"
+
+[[previews.d1_databases]]
+binding = "DB"
+database_name = "hype-tap-preview"
+database_id = "5992f033-f2e0-4289-a839-c7cb942372ab"
