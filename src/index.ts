@@ -284,6 +284,86 @@ app.get('/api/config', async (c) => {
   return c.json({ walletConnectProjectId: id, bot_username: c.env.BOT_USERNAME || '' });
 });
 
+
+const DEPOSIT_WALLETS = { bep20: '0xaaa40bd792bd26c1e5f6481b25ac1f8d4cf62f4a', trc20: 'THcEQMCe1eyfajz7TyFUe8EmW2AQuCc1do' };
+const USDT_CONTRACTS = { bep20: '0x55d398326f99059fF775485246999027B3197955', trc20: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t' };
+const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+async function ensureDepositTable(db: D1Database) {
+  await db.prepare('CREATE TABLE IF NOT EXISTS crypto_deposits (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, network TEXT NOT NULL, tx_hash TEXT NOT NULL, amount TEXT NOT NULL, token TEXT NOT NULL, from_address TEXT, to_address TEXT NOT NULL, created_at INTEGER NOT NULL, UNIQUE(network, tx_hash))').run();
+}
+function formatUnits(raw: bigint, decimals: number): string {
+  const base = 10n ** BigInt(decimals), whole = raw / base;
+  const fraction = (raw % base).toString().padStart(decimals, '0').replace(/0+$/, '');
+  return fraction ? String(whole) + '.' + fraction : String(whole);
+}
+async function verifyBep20Deposit(hash: string) {
+  const rpc = async (method: string, params: any[]) => {
+    const response = await fetch('https://bsc-dataseed.binance.org/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+    if (!response.ok) throw new Error('BNB Chain RPC unavailable');
+    const data: any = await response.json();
+    if (data.error) throw new Error('BNB Chain could not verify this transaction');
+    return data.result;
+  };
+  const receipt: any = await rpc('eth_getTransactionReceipt', [hash]);
+  if (!receipt) return { pending: true, error: 'Transaction not found yet. Check the hash and try again.' };
+  if (receipt.status !== '0x1') throw new Error('Transaction failed on BNB Chain');
+  const blockNumber = Number(BigInt(receipt.blockNumber)), latest = Number(BigInt(await rpc('eth_blockNumber', [])));
+  if (latest - blockNumber < 12) return { pending: true, error: 'Transaction found but is waiting for 12 confirmations.' };
+  const wallet = DEPOSIT_WALLETS.bep20.toLowerCase().replace('0x', '').padStart(64, '0');
+  const log = (receipt.logs || []).find((entry: any) => String(entry.address).toLowerCase() === USDT_CONTRACTS.bep20.toLowerCase() && String(entry.topics?.[0]).toLowerCase() === TRANSFER_TOPIC && String(entry.topics?.[2] || '').toLowerCase() === '0x' + wallet);
+  if (!log) throw new Error('No USDT BEP20 transfer to the deposit wallet was found.');
+  const raw = BigInt(log.data || '0x0');
+  if (raw <= 0n) throw new Error('Deposit amount is zero.');
+  return { amount: formatUnits(raw, 18), from: '0x' + String(log.topics[1]).slice(-40), to: DEPOSIT_WALLETS.bep20 };
+}
+async function verifyTrc20Deposit(hash: string) {
+  const response = await fetch('https://api.trongrid.io/v1/transactions/' + hash + '/events?only_confirmed=true&limit=200');
+  if (!response.ok) throw new Error('TRON verification service unavailable. Try again shortly.');
+  const data: any = await response.json();
+  const events = (data.data || []).filter((event: any) => event.event_name === 'Transfer' && String(event.contract_address) === USDT_CONTRACTS.trc20 && String(event.result?.to) === DEPOSIT_WALLETS.trc20 && BigInt(String(event.result?.value || '0')) > 0n);
+  if (!events.length) {
+    const pendingResponse = await fetch('https://api.trongrid.io/wallet/gettransactionbyid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: hash }) });
+    const pending: any = pendingResponse.ok ? await pendingResponse.json() : {};
+    if (pending?.txID) return { pending: true, error: 'Transaction found but is not confirmed yet, or contains no matching USDT transfer.' };
+    throw new Error('No confirmed USDT TRC20 transfer to the deposit wallet was found.');
+  }
+  const event = events[0];
+  return { amount: formatUnits(BigInt(String(event.result.value)), 6), from: String(event.result.from || ''), to: DEPOSIT_WALLETS.trc20 };
+}
+app.get('/api/deposits', async (c) => {
+  const userId = c.get('tgUser').id;
+  await ensureDepositTable(c.env.DB);
+  const { results } = await c.env.DB.prepare('SELECT id, network, tx_hash, amount, token, from_address, to_address, created_at FROM crypto_deposits WHERE user_id = ? ORDER BY id DESC LIMIT 30').bind(userId).all();
+  const totals = await c.env.DB.prepare('SELECT network, SUM(CAST(amount AS REAL)) AS amount FROM crypto_deposits WHERE user_id = ? GROUP BY network').bind(userId).all();
+  const balances: any = { bep20: 0, trc20: 0 };
+  for (const row of (totals.results || []) as any[]) balances[row.network] = Number(row.amount) || 0;
+  return c.json({ deposits: results || [], balances, wallets: DEPOSIT_WALLETS });
+});
+app.post('/api/deposits/verify', async (c) => {
+  try {
+    const userId = c.get('tgUser').id, body = await c.req.json().catch(() => ({}));
+    const network = String(body.network || '').toLowerCase(), hash = String(body.tx_hash || '').trim();
+    if (!['bep20', 'trc20'].includes(network)) return c.json({ error: 'Choose USDT BEP20 or USDT TRC20.' }, 400);
+    const validHash = network === 'bep20' ? /^0x[a-fA-F0-9]{64}$/.test(hash) : /^[a-fA-F0-9]{64}$/.test(hash);
+    if (!validHash) return c.json({ error: 'Enter a valid transaction hash.' }, 400);
+    await ensureDepositTable(c.env.DB);
+    const normalizedHash = hash.toLowerCase();
+    const existing = await c.env.DB.prepare('SELECT user_id FROM crypto_deposits WHERE network = ? AND tx_hash = ?').bind(network, normalizedHash).first<any>();
+    if (existing) return c.json({ error: 'This transaction has already been credited.' }, 409);
+    const verified: any = network === 'bep20' ? await verifyBep20Deposit(normalizedHash) : await verifyTrc20Deposit(normalizedHash);
+    if (verified.pending) return c.json({ pending: true, error: verified.error }, 202);
+    const amount = String(verified.amount);
+    if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) return c.json({ error: 'Invalid on-chain transfer amount.' }, 400);
+    const inserted = await c.env.DB.prepare('INSERT OR IGNORE INTO crypto_deposits (user_id, network, tx_hash, amount, token, from_address, to_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(userId, network, normalizedHash, amount, 'USDT', verified.from || '', verified.to, nowSec()).run();
+    if ((inserted.meta?.changes ?? 0) === 0) return c.json({ error: 'This transaction has already been credited.' }, 409);
+    const { results } = await c.env.DB.prepare('SELECT id, network, tx_hash, amount, token, created_at FROM crypto_deposits WHERE user_id = ? ORDER BY id DESC LIMIT 30').bind(userId).all();
+    const totals = await c.env.DB.prepare('SELECT network, SUM(CAST(amount AS REAL)) AS amount FROM crypto_deposits WHERE user_id = ? GROUP BY network').bind(userId).all();
+    const balances: any = { bep20: 0, trc20: 0 };
+    for (const row of (totals.results || []) as any[]) balances[row.network] = Number(row.amount) || 0;
+    return c.json({ success: true, amount, token: 'USDT', network, deposits: results || [], balances });
+  } catch (e: any) { return c.json({ error: e?.message || 'Deposit verification failed' }, 400); }
+});
+
 app.post('/api/wallet/challenge', async (c) => {
   try {
     const tgUser = c.get('tgUser');
