@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { TonConnectUI } from '@tonconnect/ui';
 
 const tg = window.Telegram?.WebApp;
 if (tg) {
@@ -1492,9 +1493,6 @@ showToast(data.error || 'Already checked in today');
       setWalletConnecting(true);
       let ui = tonConnectUIRef.current;
       if (!ui) {
-        const tonConnectModule = await import('@tonconnect/ui');
-        const TonConnectUI = tonConnectModule.TonConnectUI || tonConnectModule.default?.TonConnectUI;
-        if (typeof TonConnectUI !== 'function') throw new Error('TON Connect UI failed to load. Please refresh and try again.');
         ui = new TonConnectUI({
           manifestUrl: window.location.origin + '/tonconnect-manifest.json',
           enableAndroidBackHandler: false,
