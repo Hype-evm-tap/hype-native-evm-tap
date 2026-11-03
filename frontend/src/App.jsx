@@ -1383,7 +1383,7 @@ showToast(data.error || 'Already checked in today');
   const resumeYouTubeTasks = async () => {
     if (document.visibilityState !== 'visible') return;
     for (const task of tasks) {
-      if (String(task.type || '').toLowerCase() === 'youtube' && taskVerificationRef.current[task.id] === 'waiting_return') {
+      if (['youtube', 'link'].includes(String(task.type || '').toLowerCase()) && taskVerificationRef.current[task.id] === 'waiting_return') {
         await verifyTask(task.id);
       }
     }
