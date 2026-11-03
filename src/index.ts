@@ -282,7 +282,11 @@ app.get('/tonconnect-manifest.json', (c) => {
     url: origin,
     name: 'HYPE Native',
     iconUrl: origin + '/hype-logo.png',
-  }, 200, { 'Cache-Control': 'public, max-age=300' });
+  }, 200, {
+    'Cache-Control': 'public, max-age=300',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  });
 });
 
 // ──── Routes ────
