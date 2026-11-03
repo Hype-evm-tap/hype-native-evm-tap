@@ -156,7 +156,14 @@ async function verifyTelegramInitData(raw: string, botToken: string): Promise<Tg
     if (!userRaw) return null;
     const user = JSON.parse(userRaw);
     if (!Number.isSafeInteger(Number(user?.id)) || Number(user.id) <= 0) return null;
-    return { id: Number(user.id), username: user.username || '', first_name: user.first_name || '', last_name: user.last_name || '', start_param: params.get('start_param') || '', is_premium: user.is_premium === true };
+    return {
+      id: Number(user.id),
+      username: user.username || '',
+      first_name: user.first_name || '',
+      last_name: user.last_name || '',
+      start_param: params.get('start_param') || '',
+      is_premium: Boolean(user.is_premium),
+    };
   } catch { return null; }
 }
 
@@ -954,31 +961,39 @@ app.get('/api/tasks', async (c) => {
       c.env.DB.prepare('SELECT id, title, type, link, reward FROM tasks WHERE is_active = 1 ORDER BY id DESC').all(),
       c.env.DB.prepare('SELECT task_id FROM user_tasks WHERE user_id = ?').bind(authUser.id).all(),
     ]);
-    const visibleTasks = (tasks || []).filter((task: any) => String(task.type || '').toLowerCase() !== 'boost' || authUser.is_premium === true);
-    return c.json({ tasks: visibleTasks, completed: (completedRows || []).map((row: any) => row.task_id), is_premium: authUser.is_premium === true });
+    return c.json({ tasks: tasks || [], completed: (completedRows || []).map((row: any) => row.task_id) });
   } catch { return c.json({ tasks: [], completed: [] }); }
 });
 
-async function checkTelegramTaskMembership(db: D1Database, env: Bindings, userId: number, taskId: number, isPremium = false) {
+async function checkTelegramTaskMembership(db: D1Database, env: Bindings, userId: number, taskId: number, isPremium?: boolean) {
   const task = await db.prepare('SELECT * FROM tasks WHERE id = ? AND is_active = 1').bind(taskId).first<any>();
   if (!task) return { error: 'Task not found', status: 404 };
   const taskType = String(task.type || '').toLowerCase();
   if (taskType === 'youtube') {
     return { task, manual: true, isMember: false };
   }
-  if (taskType === 'boost' && !isPremium) return { error: 'Telegram Premium is required for this Boost Channel task.', status: 403 };
-  if (!['telegram', 'boost'].includes(taskType)) return { error: 'Unsupported task type', status: 422 };
+  if (taskType === 'boost') {
+    // Premium-only channel boost task. Bot must be admin in the channel.
+    if (!isPremium) {
+      return { error: 'This boost task is only available for Telegram Premium users', status: 403 };
+    }
+    if (!env.BOT_TOKEN) return { error: 'Telegram bot token is not configured', status: 503 };
+    const match = String(task.link || '').trim().match(/(?:https?:\/\/)?(?:www\.)?t\.me\/([A-Za-z0-9_]{5,})|^@([A-Za-z0-9_]{5,})$/i);
+    const channel = match?.[1] ? `@${match[1]}` : match?.[2] ? `@${match[2]}` : '';
+    if (!channel) return { error: 'Boost task link must be a public Telegram channel link or @username', status: 422 };
+    const response = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/getUserChatBoosts?chat_id=${encodeURIComponent(channel)}&user_id=${userId}`);
+    const result: any = await response.json();
+    if (!result?.ok) {
+      return { error: 'Could not verify boosts. The bot must be an administrator in that channel.', status: 503 };
+    }
+    const boosts = Array.isArray(result.result?.boosts) ? result.result.boosts : [];
+    return { task, isMember: boosts.length > 0, isBoost: true, boostCount: boosts.length };
+  }
+  if (taskType !== 'telegram') return { error: 'Unsupported task type', status: 422 };
   if (!env.BOT_TOKEN) return { error: 'Telegram bot token is not configured', status: 503 };
   const match = String(task.link || '').trim().match(/(?:https?:\/\/)?(?:www\.)?t\.me\/([A-Za-z0-9_]{5,})|^@([A-Za-z0-9_]{5,})$/i);
   const channel = match?.[1] ? `@${match[1]}` : match?.[2] ? `@${match[2]}` : '';
   if (!channel) return { error: 'Task link must be a public Telegram channel link or @username', status: 422 };
-  if (taskType === 'boost') {
-    const response = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/getUserChatBoosts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: channel, user_id: userId }) });
-    const result: any = await response.json();
-    if (!result?.ok) return { error: 'Could not verify channel boosts. Add the bot as an administrator in the target channel and try again.', status: 503 };
-    const boosts = Array.isArray(result.result?.boosts) ? result.result.boosts : [];
-    return { task, isMember: boosts.length > 0, boostCount: boosts.length };
-  }
   const response = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/getChatMember?chat_id=${encodeURIComponent(channel)}&user_id=${userId}`);
   const result: any = await response.json();
   if (!result?.ok) return { error: 'Could not verify channel membership. The bot must be an admin in that channel.', status: 503 };
@@ -993,7 +1008,8 @@ app.post('/api/tasks/verify', async (c) => {
     const taskId = Number(body.task_id);
     if (!Number.isSafeInteger(taskId) || taskId <= 0) return c.json({ error: 'Invalid task id' }, 400);
     const userId = c.get('tgUser').id;
-    const check: any = await checkTelegramTaskMembership(c.env.DB, c.env, userId, taskId, c.get('tgUser').is_premium === true);
+    const isPremium = Boolean(c.get('tgUser')?.is_premium);
+    const check: any = await checkTelegramTaskMembership(c.env.DB, c.env, userId, taskId, isPremium);
     if (check.error) return c.json({ error: check.error }, check.status);
     const claimed = await c.env.DB.prepare('SELECT 1 FROM user_tasks WHERE user_id = ? AND task_id = ?').bind(userId, taskId).first();
     if (check.manual) {
@@ -1005,7 +1021,10 @@ app.post('/api/tasks/verify', async (c) => {
       const wait = Math.max(0, 5 - (now - Number(visit?.returned_at || now)));
       return c.json({ verified: wait === 0, claimed: false, manual: true, wait_seconds: wait });
     }
-    return c.json({ verified: check.isMember, claimed: !!claimed || !!check.claimed, manual: false, message: check.isMember ? 'Membership verified' : 'Join the channel first' });
+    const msg = check.isBoost
+      ? (check.isMember ? `Boost verified (${check.boostCount} active)` : 'Boost the channel first (Telegram Premium required)')
+      : (check.isMember ? 'Membership verified' : 'Join the channel first');
+    return c.json({ verified: check.isMember, claimed: !!claimed || !!check.claimed, manual: false, message: msg, is_boost: !!check.isBoost });
   } catch (e: any) { return c.json({ error: e?.message || 'Task verification failed' }, 400); }
 });
 
@@ -1015,14 +1034,15 @@ app.post('/api/tasks/complete', async (c) => {
     const taskId = Number(body.task_id);
     if (!Number.isSafeInteger(taskId) || taskId <= 0) return c.json({ error: 'Invalid task id' }, 400);
     const u = await ensureUser(c.env.DB, c.env, c.get('tgUser'), null);
-    const check: any = await checkTelegramTaskMembership(c.env.DB, c.env, u.id, taskId, c.get('tgUser').is_premium === true);
+    const isPremium = Boolean(c.get('tgUser')?.is_premium);
+    const check: any = await checkTelegramTaskMembership(c.env.DB, c.env, u.id, taskId, isPremium);
     if (check.error) return c.json({ error: check.error }, check.status);
     if (check.manual) {
       await c.env.DB.prepare('CREATE TABLE IF NOT EXISTS youtube_task_visits (user_id INTEGER NOT NULL, task_id INTEGER NOT NULL, returned_at INTEGER NOT NULL, PRIMARY KEY (user_id, task_id))').run();
       const visit = await c.env.DB.prepare('SELECT returned_at FROM youtube_task_visits WHERE user_id = ? AND task_id = ?').bind(u.id, taskId).first<any>();
       if (!visit || nowSec() - Number(visit.returned_at) < 5) return c.json({ error: 'Return to HYPE Tap and wait 5 seconds before claiming.' }, 403);
     } else if (!check.isMember) {
-      return c.json({ error: 'Join the Telegram channel first. The bot must be an admin in that channel.' }, 403);
+      return c.json({ error: check.isBoost ? 'Boost the channel first (Telegram Premium required)' : 'Join the Telegram channel first. The bot must be an admin in that channel.' }, 403);
     }
     const taskReward = Number(check.task.reward);
     if (!Number.isFinite(taskReward) || taskReward < 0 || taskReward > 1000000) return c.json({ error: 'Task reward is invalid; contact an admin' }, 422);
@@ -1261,8 +1281,12 @@ app.post('/api/admin/tasks', async (c) => {
   const reward = Number(b.reward);
   const telegramChannel = /^(?:https?:\/\/)?(?:www\.)?t\.me\/[A-Za-z0-9_]{5,}\/?$|^@[A-Za-z0-9_]{5,}$/i.test(link);
   const youtubeLink = /^(https?:\/\/)?(www\.)?(youtube\.com\/(channel\/|@|c\/|user\/|watch\?v=)|youtu\.be\/)[A-Za-z0-9_?&=.-]+/i.test(link);
-  const validLink = (['telegram', 'boost'].includes(type) && telegramChannel) || (type === 'youtube' && youtubeLink);
-  if (!title || !validLink || !['telegram', 'youtube', 'boost'].includes(type) || !Number.isFinite(reward) || reward < 0 || reward > 1000000) return c.json({ error: 'Enter a valid public t.me or YouTube channel/video link, title and reward' }, 400);
+  const validLink =
+    ((type === 'telegram' || type === 'boost') && telegramChannel) ||
+    (type === 'youtube' && youtubeLink);
+  if (!title || !validLink || !['telegram', 'youtube', 'boost'].includes(type) || !Number.isFinite(reward) || reward < 0 || reward > 1000000) {
+    return c.json({ error: 'Enter a valid public t.me (for telegram/boost) or YouTube link, title and reward' }, 400);
+  }
   const info = await c.env.DB.prepare('INSERT INTO tasks (title, type, link, reward, is_active) VALUES (?, ?, ?, ?, 1)').bind(title, type, link, reward).run();
   return c.json({ success: true, id: info.meta.last_row_id });
 });
