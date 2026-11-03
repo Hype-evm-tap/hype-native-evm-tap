@@ -38,6 +38,9 @@ function formatTime(sec) {
 
 // Lucide / Feather style SVG icons (JVault-like)
 const SVGS = {
+  ton: (<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#0098EA"/><path d="M8.3 9.5h15.4c1.6 0 2.6 1.7 1.8 3.1L17.7 25c-.8 1.4-2.6 1.4-3.4 0L6.5 12.6c-.8-1.4.2-3.1 1.8-3.1Zm3.1 3.1 4.6 8 4.6-8h-9.2Z" fill="#fff"/></svg>),
+  usdt: (<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#26A17B"/><path fill="#fff" d="M17.9 17.4v-.1c-.1 0-.8.1-2 .1s-1.9-.1-2-.1v.1c-4.4-.2-7.7-1-7.7-2s3.3-1.8 7.7-2v3.2c.1 0 1 .1 2 .1s1.9-.1 2-.1v-3.2c4.4.2 7.7 1 7.7 2s-3.3 1.8-7.7 2Zm0-5.2V9.4h6.2V6.5H7.9v2.9h6.2v2.8C9 12.4 5 13.6 5 15.1v3.1c0 1.5 4 2.7 9.1 2.9v4.4h3.8v-4.4c5.1-.2 9.1-1.4 9.1-2.9v-3.1c0-1.5-4-2.7-9.1-2.9Z"/></svg>),
+  hype: (<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#101510" stroke="#00E887" strokeWidth="1.5"/><path d="M8 7h4v7h8V7h4v18h-4v-7h-8v7H8V7Z" fill="#00E887"/></svg>),
   telegram: (<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.7 3.3 18.6 20c-.2 1.2-.9 1.5-1.8.9l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5.1 9.3-8.4c.4-.4-.1-.6-.6-.2L6 13.5 1 12c-1.1-.3-1.1-1 .2-1.5L20.5 3c.9-.3 1.6.2 1.2 1.3Z"/></svg>),
   youtube: (<svg viewBox="0 0 24 24" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8ZM9.6 15.6V8.4L15.8 12l-6.2 3.6Z"/></svg>),
   globe: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg>),
@@ -195,11 +198,11 @@ const SVGS = {
   ),
 };
 
-function Icon({ name, className = '', size = 18 }) {
+function Icon({ name, className = '', size = 18, title = '' }) {
   const svg = SVGS[name];
   if (!svg) return null;
   return (
-    <span className={`svg-icon ${className}`.trim()} style={{ width: size, height: size }}>
+    <span className={`svg-icon ${className}`.trim()} style={{ width: size, height: size }} title={title || undefined} aria-label={title || undefined}>
       {svg}
     </span>
   );
@@ -2189,8 +2192,9 @@ const locked = !claimed && !current;
             <div className="card-title"><Icon name="coins" size={16} /> Deposit</div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
               {['ton', 'bep20', 'trc20'].map((network) => (
-                <button key={network} className={`admin-tab ${depositNetwork === network ? 'active' : ''}`} onClick={() => setDepositNetwork(network)}>
-                  {network === 'ton' ? 'TON / GRAM' : 'USDT ' + network.toUpperCase()}
+                <button key={network} className={`admin-tab ${depositNetwork === network ? 'active' : ''}`} onClick={() => setDepositNetwork(network)} title={network === 'ton' ? 'TON / GRAM' : 'USDT ' + network.toUpperCase()} aria-label={network === 'ton' ? 'TON / GRAM' : 'USDT ' + network.toUpperCase()}>
+                  <Icon name={network === 'ton' ? 'ton' : 'usdt'} size={22} />
+                  {network !== 'ton' && <span style={{ fontSize: '0.72rem', marginLeft: 4 }}>{network.toUpperCase()}</span>}
                 </button>
               ))}
             </div>
@@ -2209,7 +2213,7 @@ const locked = !claimed && !current;
               {depositBusy ? 'Checking blockchain…' : 'Verify Deposit'}
             </button>
             <div style={{ marginTop: 12, fontSize: '0.85rem', color: '#a0ffc0' }}>
-              Verified balance: {Number(depositData.balances?.[depositNetwork] || 0).toFixed(depositNetwork === 'ton' ? 9 : 6)} {depositNetwork === 'ton' ? 'TON' : 'USDT'}
+              Verified balance: <Icon name={depositNetwork === 'ton' ? 'ton' : 'usdt'} size={20} title={depositNetwork === 'ton' ? 'TON' : 'USDT'} /> {Number(depositData.balances?.[depositNetwork] || 0).toFixed(depositNetwork === 'ton' ? 9 : 6)}
             </div>
             <div style={{ fontSize: '0.72rem', color: '#888', marginTop: 5 }}>
               Server checks the real on-chain recipient, transaction success, amount and confirmations. Each hash can be credited only once.
@@ -2217,9 +2221,9 @@ const locked = !claimed && !current;
           </div>
 
           <div className="card">
-            <div className="card-title"><Icon name="coins" size={16} /> Withdraw HYPE</div>
+            <div className="card-title"><Icon name="hype" size={20} title="HYPE" /> Withdraw</div>
             <div style={{ marginBottom: 10, fontSize: '0.9rem' }}>
-              Balance: <strong style={{ color: '#00ff88' }}>{formatNum(user?.balance, 10)} HYPE</strong>
+              <Icon name="hype" size={20} title="HYPE" /> <strong style={{ color: '#00ff88' }}>{formatNum(user?.balance, 10)}</strong>
             </div>
             <div style={{ marginBottom: 10, fontSize: '0.85rem', color: '#ffaa00' }}>
               Minimum withdraw is {config?.min_withdraw || 1} HYPE
