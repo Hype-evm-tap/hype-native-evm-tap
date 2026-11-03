@@ -279,12 +279,8 @@ const [broadcastSending, setBroadcastSending] = useState(false);
   const [wdWallet, setWdWallet] = useState('');
   const [connectedWallet, setConnectedWallet] = useState('');
   const [walletConnecting, setWalletConnecting] = useState(false);
-  const [swapTokens, setSwapTokens] = useState([]);
-  const [swapTokenAddress, setSwapTokenAddress] = useState('');
-  const [swapAmount, setSwapAmount] = useState('');
-  const [swapQuote, setSwapQuote] = useState(null);
-  const [swapBusy, setSwapBusy] = useState(false);
-  const [swapStatus, setSwapStatus] = useState('');
+  const [depositOrders, setDepositOrders] = useState([]);
+  const [depositOrdersBusy, setDepositOrdersBusy] = useState(false);
   const swapProviderRef = useRef(null);
   // Daily check-in streak (7-day)
   const [streak, setStreak] = useState(0);
@@ -869,8 +865,6 @@ const persistWallet = async (addr, walletProvider = null) => {
     } catch (_) {}
     setConnectedWallet('');
     setWdWallet('');
-    swapProviderRef.current = null;
-    setSwapQuote(null);
     try {
       await api('/api/wallet', {
         method: 'POST',
@@ -879,133 +873,6 @@ const persistWallet = async (addr, walletProvider = null) => {
     } catch (_) {}
     showToast('Wallet disconnected');
   };
-  const HYPE_NATIVE_TOKEN = '0x0000000000000000000000000000000000000000';
-  const LI_FI_API = 'https://li.quest/v1';
-
-  const loadSwapTokens = async () => {
-    try {
-      const response = await fetch(LI_FI_API + '/tokens?chains=999');
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.message || 'Could not load HyperEVM tokens');
-      const list = (data?.tokens?.['999'] || []).filter(t => t && t.address && t.symbol && t.address.toLowerCase() !== HYPE_NATIVE_TOKEN);
-      setSwapTokens(list);
-      if (list.length && !list.some(t => t.address.toLowerCase() === swapTokenAddress.toLowerCase())) setSwapTokenAddress(list[0].address);
-    } catch (e) { showToast(String(e?.message || 'Token list unavailable').slice(0, 90)); }
-  };
-
-  useEffect(() => { loadSwapTokens(); }, []);
-
-  const decimalToUnits = (value, decimals) => {
-    const raw = String(value || '').trim();
-    if (!/^\d+(\.\d*)?$/.test(raw)) throw new Error('Enter a valid amount');
-    const parts = raw.split('.');
-    const whole = parts[0], fraction = parts[1] || '';
-    if (fraction.length > decimals) throw new Error('Too many decimal places');
-    return (BigInt(whole) * (10n ** BigInt(decimals)) + BigInt((fraction + '0'.repeat(decimals)).slice(0, decimals) || '0')).toString();
-  };
-
-  const unitsToDecimal = (value, decimals, precision = 8) => {
-    const n = BigInt(value || '0'), base = 10n ** BigInt(decimals);
-    const whole = n / base;
-    const frac = (n % base).toString().padStart(decimals, '0').slice(0, precision).replace(/0+$/, '');
-    return frac ? whole.toString() + '.' + frac : whole.toString();
-  };
-
-  const getSwapProvider = () => {
-    const provider = swapProviderRef.current || wcProviderRef.current || window.ethereum;
-    if (!provider?.request) throw new Error('Reconnect your wallet to enable swaps');
-    return provider;
-  };
-
-  const requestSwapQuote = async () => {
-    try {
-      if (!connectedWallet) throw new Error('Connect your wallet first');
-      const token = swapTokens.find(t => t.address.toLowerCase() === swapTokenAddress.toLowerCase());
-      if (!token) throw new Error('Choose a supported HyperEVM token');
-      const fromAmount = decimalToUnits(swapAmount, Number(token.decimals));
-      if (BigInt(fromAmount) <= 0n) throw new Error('Amount must be greater than zero');
-      setSwapBusy(true); setSwapStatus('Getting live route…'); setSwapQuote(null);
-      const params = new URLSearchParams({
-        fromChain: '999', toChain: '999', fromToken: token.address,
-        toToken: HYPE_NATIVE_TOKEN, fromAmount, fromAddress: connectedWallet,
-        slippage: '0.005', order: 'RECOMMENDED'
-      });
-      const response = await fetch(LI_FI_API + '/quote?' + params.toString());
-      const quote = await response.json();
-      if (!response.ok || quote?.message || !quote?.transactionRequest) throw new Error(quote?.message || quote?.error || 'No executable route found for this token and amount');
-      if (Number(quote.fromChainId) !== 999 || Number(quote.toChainId) !== 999) throw new Error('Unexpected network in quote');
-      setSwapQuote(quote); setSwapStatus('Quote ready. Review the estimate and confirm in your wallet.');
-    } catch (e) { setSwapQuote(null); setSwapStatus(''); showToast(String(e?.message || 'Quote failed').slice(0, 110)); }
-    finally { setSwapBusy(false); }
-  };
-
-  const waitForSwapReceipt = async (provider, hash) => {
-    for (let i = 0; i < 90; i++) {
-      const receipt = await provider.request({ method: 'eth_getTransactionReceipt', params: [hash] });
-      if (receipt) {
-        if (receipt.status === '0x0') throw new Error('Transaction reverted on-chain');
-        return receipt;
-      }
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-    throw new Error('Transaction sent; confirmation is delayed. Check your wallet activity.');
-  };
-
-  const executeNativeHypeSwap = async () => {
-    if (!swapQuote || swapBusy) return;
-    const provider = getSwapProvider();
-    setSwapBusy(true);
-    try {
-      setSwapStatus('Checking wallet network…');
-      const chainHex = await provider.request({ method: 'eth_chainId' });
-      if (Number.parseInt(chainHex, 16) !== 999) throw new Error('Switch wallet to HyperEVM (Chain ID 999) and request a fresh quote');
-      const accounts = await provider.request({ method: 'eth_accounts' });
-      if (!accounts?.[0] || accounts[0].toLowerCase() !== connectedWallet.toLowerCase()) throw new Error('Connected wallet changed. Reconnect.');
-      const token = swapTokens.find(t => t.address.toLowerCase() === swapTokenAddress.toLowerCase());
-      if (!token) throw new Error('Token is no longer available');
-      const word = v => v.toLowerCase().replace(/^0x/, '').padStart(64, '0');
-      const approvalAddress = swapQuote.estimate?.approvalAddress;
-      if (approvalAddress) {
-        if (!/^0x[a-fA-F0-9]{40}$/.test(approvalAddress)) throw new Error('Invalid approval contract in route');
-        setSwapStatus('Checking token allowance…');
-        const allowanceData = '0xdd62ed3e' + word(connectedWallet) + word(approvalAddress);
-        const allowanceHex = await provider.request({method:'eth_call',params:[{to:token.address,data:allowanceData},'latest']});
-        const required = BigInt(swapQuote.action?.fromAmount || '0');
-        if (BigInt(allowanceHex || '0x0') < required) {
-          setSwapStatus('Approve token spending in your wallet…');
-          const approveData = '0x095ea7b3' + word(approvalAddress) + 'f'.repeat(64);
-          const approveHash = await provider.request({method:'eth_sendTransaction',params:[{from:connectedWallet,to:token.address,data:approveData,value:'0x0'}]});
-          await waitForSwapReceipt(provider, approveHash);
-        }
-      }
-      setSwapStatus('Refreshing executable route…');
-      const params = new URLSearchParams({
-        fromChain:'999',toChain:'999',fromToken:token.address,toToken:HYPE_NATIVE_TOKEN,
-        fromAmount:decimalToUnits(swapAmount,Number(token.decimals)),fromAddress:connectedWallet,
-        slippage:'0.005',order:'RECOMMENDED'
-      });
-      const response = await fetch(LI_FI_API + '/quote?' + params.toString());
-      const quote = await response.json();
-      if (!response.ok || !quote?.transactionRequest) throw new Error(quote?.message || 'Route expired. Request a new quote.');
-      const tx = quote.transactionRequest;
-      if (Number(tx.chainId) !== 999 || !/^0x[a-fA-F0-9]{40}$/.test(tx.to || '') ||
-          !/^0x[a-fA-F0-9]*$/.test(tx.data || '') ||
-          (tx.from && tx.from.toLowerCase() !== connectedWallet.toLowerCase())) throw new Error('Route failed transaction safety checks');
-      const transaction = {from:connectedWallet,to:tx.to,data:tx.data || '0x',value:tx.value || '0x0'};
-      if (tx.gasLimit) transaction.gas = tx.gasLimit;
-      if (tx.gasPrice) transaction.gasPrice = tx.gasPrice;
-      setSwapStatus('Confirm the swap transaction in your wallet…');
-      const hash = await provider.request({method:'eth_sendTransaction',params:[transaction]});
-      setSwapStatus('Transaction sent. Waiting for HyperEVM confirmation…');
-      await waitForSwapReceipt(provider, hash);
-      setSwapQuote(null); setSwapAmount('');
-      setSwapStatus('Swap complete · ' + hash);
-      showToast('Native HYPE swap completed');
-    } catch (e) { setSwapStatus(''); showToast(String(e?.message || 'Swap failed').slice(0, 110)); }
-    finally { setSwapBusy(false); }
-  };
-
-
   const shortAddr = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '');
 
   const doCheckin = async () => {
@@ -1738,7 +1605,22 @@ showToast(data.error || 'Already checked in today');
     if (!data.error) setDepositData(data);
   };
 
-  useEffect(() => { if (tab === 'wallet') loadDeposits(); }, [tab]);
+  const loadSwapDashboard = async () => {
+    setDepositOrdersBusy(true);
+    try {
+      const [deposits, orders] = await Promise.all([api('/api/deposits'), api('/api/deposit-swaps')]);
+      if (!deposits.error) setDepositData(deposits);
+      if (!orders.error) {
+        setDepositOrders(orders.orders || []);
+        if (orders.hype_balance != null) setUser((old) => old ? { ...old, balance: Number(orders.hype_balance) || 0 } : old);
+      }
+    } finally { setDepositOrdersBusy(false); }
+  };
+
+  useEffect(() => {
+    if (tab === 'wallet') loadDeposits();
+    if (tab === 'swap') loadSwapDashboard();
+  }, [tab]);
 
   const verifyDeposit = async () => {
     const hash = depositHash.trim();
@@ -1751,6 +1633,7 @@ showToast(data.error || 'Already checked in today');
     if (data.success) {
       setDepositHash('');
       setDepositData((old) => ({ ...old, deposits: data.deposits || old.deposits, balances: data.balances || old.balances }));
+      await loadSwapDashboard();
       await loadHistory();
       showToast('Verified: +' + data.amount + ' ' + (data.token || 'USDT'));
     } else {
@@ -2548,6 +2431,93 @@ const locked = !claimed && !current;
         </div>
       )}
 
+      {/* SWAP / DEPOSIT */}
+      {tab === 'swap' && (
+        <div className="page">
+          <div className="card" style={{background:'linear-gradient(145deg,rgba(0,255,136,0.13),rgba(9,20,16,0.96))',border:'1px solid rgba(0,255,136,0.28)'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
+              <div>
+                <div style={{fontSize:'0.72rem',letterSpacing:2,color:'#8da99a',fontWeight:800}}>HYPE FINANCE</div>
+                <div style={{fontSize:'1.5rem',fontWeight:900,marginTop:4}}>Swap & Deposit</div>
+                <div style={{fontSize:'0.76rem',color:'#a0ffc0',marginTop:5}}>Deposit ETH, USDT or TON and convert verified deposits to HYPE.</div>
+              </div>
+              <img src="/hype-coin.svg" alt="HYPE" style={{width:52,height:52,objectFit:'contain'}} />
+            </div>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
+            <div className="card" style={{margin:0,padding:14}}>
+              <div style={{fontSize:'0.7rem',color:'#9aa',fontWeight:800}}>YOUR HYPE BALANCE</div>
+              <div style={{fontSize:'1.25rem',fontWeight:900,color:'#00ff88',marginTop:7}}>{formatNum(user?.balance || 0,10)}</div>
+              <div style={{fontSize:'0.7rem',color:'#8a9b91'}}>HYPE available in your app</div>
+            </div>
+            <div className="card" style={{margin:0,padding:14}}>
+              <div style={{fontSize:'0.7rem',color:'#9aa',fontWeight:800}}>VERIFIED DEPOSITS</div>
+              <div style={{fontSize:'1.25rem',fontWeight:900,color:'#fff',marginTop:7}}>3 ASSETS</div>
+              <div style={{fontSize:'0.7rem',color:'#8a9b91'}}>ETH · USDT · TON deposits tracked</div>
+            </div>
+          </div>
+          <div className="card">
+            <div className="card-title"><Icon name="arrow-left-right" size={18}/> Deposit → HYPE Swap</div>
+            <div style={{fontSize:'0.78rem',color:'#a0ffc0',lineHeight:1.55,marginBottom:12}}>Every successfully verified deposit is automatically added to the HYPE conversion queue. HYPE is credited to your balance only after the conversion is completed and the incoming HYPE transfer is verified on HyperEVM.</div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:8}}>
+              <div style={{background:'#101b16',border:'1px solid #254634',borderRadius:10,padding:10}}><div style={{fontSize:'0.68rem',color:'#9aa'}}>ETH</div><strong style={{fontSize:'0.9rem'}}>{Number(depositData.balances?.eth||0).toFixed(6)}</strong></div>
+              <div style={{background:'#101b16',border:'1px solid #254634',borderRadius:10,padding:10}}><div style={{fontSize:'0.68rem',color:'#9aa'}}>USDT</div><strong style={{fontSize:'0.9rem'}}>{(Number(depositData.balances?.bep20||0)+Number(depositData.balances?.trc20||0)).toFixed(4)}</strong></div>
+              <div style={{background:'#101b16',border:'1px solid #254634',borderRadius:10,padding:10}}><div style={{fontSize:'0.68rem',color:'#9aa'}}>TON</div><strong style={{fontSize:'0.9rem'}}>{Number(depositData.balances?.ton||0).toFixed(6)}</strong></div>
+            </div>
+            <div style={{fontSize:'0.7rem',color:'#ffaa66',marginTop:10}}>Conversion is currently operator-settled, not an instant on-chain swap. Your HYPE balance updates after settlement.</div>
+          </div>
+                    <div className="card">
+            <div className="card-title"><Icon name="coins" size={16} /> Deposit</div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+              {['eth', 'bep20', 'trc20', 'ton'].map((network) => (
+                <button key={network} className={`admin-tab ${depositNetwork === network ? 'active' : ''}`} onClick={() => setDepositNetwork(network)} title={network === 'ton' ? 'TON / GRAM' : network === 'bep20' ? 'USDT BNB Smart Chain' : network === 'trc20' ? 'USDT TRON' : 'ETH Ethereum'} aria-label={network === 'ton' ? 'TON / GRAM' : network === 'bep20' ? 'USDT BEP20' : network === 'trc20' ? 'USDT TRC20' : 'ETH Ethereum'}>
+                  <Icon name={network === 'ton' ? 'ton' : network === 'eth' ? 'eth' : 'usdt'} size={22} />
+                  <span style={{ fontSize: '0.72rem', marginLeft: 4 }}>{network === 'ton' ? 'TON' : network === 'bep20' ? 'USDT BEP20' : network === 'trc20' ? 'USDT TRC20' : 'ETH'}</span>
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: '0.8rem', color: '#a0ffc0', marginBottom: 6 }}>
+              {depositNetwork === 'ton' ? <>Send native <Icon name="ton" size={17} title="TON" /> only (TON / GRAM uses this same address). Jettons are not accepted.</> : depositNetwork === 'eth' ? <>Send native <Icon name="eth" size={17} title="ETH" /> only on Ethereum Mainnet to this address:</> : <>Send only <Icon name="usdt" size={17} title="USDT" /> on {depositNetwork.toUpperCase()} network to this address:</>}
+            </div>
+            <div style={{ padding: 10, borderRadius: 8, background: 'rgba(0,255,136,0.07)', wordBreak: 'break-all', fontSize: '0.78rem' }}>
+              {depositNetwork === 'ton' ? 'UQBtBjwUwBXKsJuRr1UFdba_B1Rh8gXo0uFBzuT9-mVC17yl' : depositNetwork === 'bep20' ? '0xaaa40bd792bd26c1e5f6481b25ac1f8d4cf62f4a' : depositNetwork === 'trc20' ? 'THcEQMCe1eyfajz7TyFUe8EmW2AQuCc1do' : '0x87Ad7Fe8Be9eeEa2E388F80f4C5fcF450E037463'}
+            </div>
+            <button className="btn btn-secondary" style={{ width: '100%', marginTop: 8 }} onClick={() => {
+              const address = depositNetwork === 'ton' ? 'UQBtBjwUwBXKsJuRr1UFdba_B1Rh8gXo0uFBzuT9-mVC17yl' : depositNetwork === 'bep20' ? '0xaaa40bd792bd26c1e5f6481b25ac1f8d4cf62f4a' : depositNetwork === 'trc20' ? 'THcEQMCe1eyfajz7TyFUe8EmW2AQuCc1do' : '0x87Ad7Fe8Be9eeEa2E388F80f4C5fcF450E037463';
+              copyText(address).then(() => showToast('Deposit address copied')).catch(() => showToast('Copy address manually'));
+            }}>Copy Deposit Address</button>
+            <input className="input" style={{ marginTop: 12 }} placeholder="Paste transaction hash" value={depositHash} onChange={(e) => setDepositHash(e.target.value.trim())} />
+            <button className="btn btn-primary" style={{ width: '100%' }} onClick={verifyDeposit} disabled={depositBusy}>
+              {depositBusy ? 'Checking blockchain…' : 'Verify Deposit'}
+            </button>
+            <div style={{ marginTop: 12, fontSize: '0.85rem', color: '#a0ffc0' }}>
+              Verified balance: <Icon name={depositNetwork === 'ton' ? 'ton' : depositNetwork === 'eth' ? 'eth' : 'usdt'} size={20} title={depositNetwork === 'ton' ? 'TON' : depositNetwork === 'eth' ? 'ETH' : 'USDT'} /> {Number(depositData.balances?.[depositNetwork] || 0).toFixed(depositNetwork === 'ton' || depositNetwork === 'eth' ? 9 : 6)} {depositNetwork === 'eth' ? 'ETH' : depositNetwork === 'ton' ? 'TON' : 'USDT'}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: '#888', marginTop: 5 }}>
+              {depositNetwork === 'ton' ? 'TON sender must match your TON Connect signature-verified wallet. Connect your TON wallet from the Wallet tab before submitting a deposit.' : depositNetwork === 'eth' ? 'Send native ETH on Ethereum Mainnet. The sender must match your signature-verified EVM wallet. Each transaction hash can be credited once.' : 'Send USDT only on the selected network. The sender must match your linked wallet (TRON address derived from your linked EVM wallet for TRC20). Each transaction hash can be credited once.'}
+            </div>
+          </div>
+
+
+          <div className="card">
+            <div className="card-title"><Icon name="activity" size={17}/> Swap Status</div>
+            {depositOrdersBusy && <div style={{fontSize:'0.78rem',color:'#9aa'}}>Refreshing orders…</div>}
+            {!depositOrders.length && <div style={{fontSize:'0.78rem',color:'#8a9b91'}}>No deposit-to-HYPE swap orders yet. Verify a deposit to start.</div>}
+            {depositOrders.map((order) => (
+              <div key={order.id} style={{padding:'11px 0',borderBottom:'1px solid rgba(0,255,136,0.12)'}}>
+                <div style={{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center'}}>
+                  <strong style={{fontSize:'0.86rem'}}>{order.from_amount} {order.from_asset} → HYPE</strong>
+                  <span style={{fontSize:'0.68rem',fontWeight:800,color:order.status==='completed'?'#00ff88':order.status==='failed'?'#ff7b7b':'#ffc36b'}}>{String(order.status||'queued').toUpperCase()}</span>
+                </div>
+                <div style={{fontSize:'0.7rem',color:'#8a9b91',marginTop:4}}>{order.from_network} · {order.created_at ? new Date(Number(order.created_at)*1000).toLocaleString() : ''}</div>
+                {order.received_hype_amount && <div style={{fontSize:'0.75rem',color:'#00ff88',marginTop:4}}>Received: {order.received_hype_amount} HYPE</div>}
+              </div>
+            ))}
+            <button className="btn btn-secondary" style={{width:'100%',marginTop:10}} onClick={loadSwapDashboard} disabled={depositOrdersBusy}>Refresh balances & status</button>
+          </div>
+        </div>
+      )}
+
       {/* WALLET / WITHDRAW */}
       {tab === 'wallet' && (
         <div className="page">
@@ -2590,34 +2560,6 @@ const locked = !claimed && !current;
           </div>
 
           <div className="card">
-            <div className="card-title"><img src="/hype-coin.svg" alt="HYPE" style={{width:24,height:24,objectFit:'contain'}} /> HyperEVM Swap</div>
-            <div style={{fontSize:'0.78rem',color:'#a0ffc0',marginBottom:12,lineHeight:1.5}}>Convert a token in your connected HyperEVM wallet into native HYPE. The swap uses a live route quote; nothing is transferred until you approve the transaction in your wallet.</div>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:'0.72rem',color:'#9aa',marginBottom:8}}>
-              <span>NETWORK</span><strong style={{color:'#00d98b'}}>HyperEVM · Chain ID 999</strong>
-            </div>
-            <div style={{background:'#111b16',border:'1px solid #244a36',borderRadius:12,padding:12,marginBottom:12}}>
-              <div style={{display:'flex',justifyContent:'space-between',fontSize:'0.75rem',color:'#aab',marginBottom:7}}><span>You pay</span><span>From wallet</span></div>
-              <select className="input" value={swapTokenAddress} onChange={e=>{setSwapTokenAddress(e.target.value);setSwapQuote(null);}} disabled={swapBusy || !swapTokens.length} style={{marginBottom:8}}>
-                {swapTokens.map(token=><option key={token.address} value={token.address}>{token.symbol} · {token.name || token.address.slice(0,8)}</option>)}
-              </select>
-              <input className="input" style={{marginBottom:0,fontSize:'1.1rem',fontWeight:700}} type="number" min="0" step="any" inputMode="decimal" placeholder="0.00" value={swapAmount} onChange={e=>{setSwapAmount(e.target.value);setSwapQuote(null);}} disabled={swapBusy}/>
-            </div>
-            <div style={{textAlign:'center',color:'#00d98b',fontSize:'1.1rem',margin:'-4px 0 8px'}}>↓</div>
-            <div style={{background:'#111b16',border:'1px solid #244a36',borderRadius:12,padding:12,marginBottom:12}}>
-              <div style={{fontSize:'0.75rem',color:'#aab',marginBottom:7}}>You receive</div>
-              <div style={{fontSize:'1.12rem',fontWeight:800,color:'#00ff88'}}>{swapQuote?.estimate?.toAmount ? unitsToDecimal(swapQuote.estimate.toAmount,Number(swapQuote.action?.toToken?.decimals || 18),8)+' HYPE' : 'Native HYPE'}</div>
-              <div style={{fontSize:'0.7rem',color:'#778',marginTop:5}}>Estimated output · final amount may change with market conditions</div>
-            </div>
-            <button className="btn btn-secondary" style={{width:'100%'}} onClick={requestSwapQuote} disabled={swapBusy || !connectedWallet || !swapTokenAddress || !swapAmount || !swapTokens.length}>{swapBusy && !swapQuote ? 'Finding best route…' : 'Get live swap quote'}</button>
-            {swapQuote?.estimate && <div style={{marginTop:12,border:'1px solid #294536',borderRadius:11,padding:11}}>
-              <div style={{fontWeight:800,fontSize:'0.82rem',marginBottom:9,color:'#d8ffe9'}}>Quote details</div>
-              <div style={{display:'flex',justifyContent:'space-between',gap:8,fontSize:'0.73rem',marginBottom:7}}><span style={{color:'#9aa'}}>Minimum received</span><strong>{unitsToDecimal(swapQuote.estimate.toAmountMin || swapQuote.estimate.toAmount,Number(swapQuote.action?.toToken?.decimals || 18),8)} HYPE</strong></div>
-              <div style={{display:'flex',justifyContent:'space-between',gap:8,fontSize:'0.73rem',marginBottom:7}}><span style={{color:'#9aa'}}>Route provider</span><strong>{swapQuote.toolDetails?.name || swapQuote.tool || 'LI.FI'}</strong></div>
-              {swapQuote.estimate.gasCosts?.map((fee,i)=><div key={i} style={{display:'flex',justifyContent:'space-between',gap:8,fontSize:'0.73rem',marginBottom:7}}><span style={{color:'#9aa'}}>Estimated network fee</span><strong>{fee.amountUSD ? `${fee.amountUSD}` : `${fee.amount || ''} ${fee.token?.symbol || ''}`}</strong></div>)}
-            </div>}
-          </div>
-
-          <div className="card">
             <div className="card-title"><Icon name="ton" size={20} title="TON" /> TON Wallet Ownership</div>
             {tonWallet?.address_friendly ? (
               <div className="wallet-connected-box">
@@ -2633,38 +2575,6 @@ const locked = !claimed && !current;
                 </button>
               </>
             )}
-          </div>
-
-          <div className="card">
-            <div className="card-title"><Icon name="coins" size={16} /> Deposit</div>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-              {['ton', 'bep20', 'trc20', 'eth', 'usdc_eth'].map((network) => (
-                <button key={network} className={`admin-tab ${depositNetwork === network ? 'active' : ''}`} onClick={() => setDepositNetwork(network)} title={network === 'ton' ? 'TON / GRAM' : network === 'bep20' ? 'USDT BNB Smart Chain' : network === 'trc20' ? 'USDT TRON' : network === 'eth' ? 'ETH Ethereum' : 'USDC Ethereum ERC20'} aria-label={network === 'ton' ? 'TON / GRAM' : network === 'bep20' ? 'USDT BEP20' : network === 'trc20' ? 'USDT TRC20' : network === 'eth' ? 'ETH Ethereum' : 'USDC Ethereum ERC20'}>
-                  <Icon name={network === 'ton' ? 'ton' : network === 'eth' ? 'eth' : 'usdt'} size={22} />
-                  <span style={{ fontSize: '0.72rem', marginLeft: 4 }}>{network === 'ton' ? 'TON' : network === 'bep20' ? 'BEP20' : network === 'trc20' ? 'TRC20' : network === 'eth' ? 'ETH' : 'USDC'}</span>
-                </button>
-              ))}
-            </div>
-            <div style={{ fontSize: '0.8rem', color: '#a0ffc0', marginBottom: 6 }}>
-              {depositNetwork === 'ton' ? <>Send native <Icon name="ton" size={17} title="TON" /> only (TON / GRAM uses this same address). Jettons are not accepted.</> : depositNetwork === 'eth' ? <>Send native <Icon name="eth" size={17} title="ETH" /> only on Ethereum Mainnet to this address:</> : depositNetwork === 'usdc_eth' ? <>Send only <Icon name="usdt" size={17} title="USDC" /> (USDC ERC20) on Ethereum Mainnet to this address:</> : <>Send only <Icon name="usdt" size={17} title="USDT" /> on {depositNetwork.toUpperCase()} network to this address:</>}
-            </div>
-            <div style={{ padding: 10, borderRadius: 8, background: 'rgba(0,255,136,0.07)', wordBreak: 'break-all', fontSize: '0.78rem' }}>
-              {depositNetwork === 'ton' ? 'UQBtBjwUwBXKsJuRr1UFdba_B1Rh8gXo0uFBzuT9-mVC17yl' : depositNetwork === 'bep20' ? '0xaaa40bd792bd26c1e5f6481b25ac1f8d4cf62f4a' : depositNetwork === 'trc20' ? 'THcEQMCe1eyfajz7TyFUe8EmW2AQuCc1do' : '0x87Ad7Fe8Be9eeEa2E388F80f4C5fcF450E037463'}
-            </div>
-            <button className="btn btn-secondary" style={{ width: '100%', marginTop: 8 }} onClick={() => {
-              const address = depositNetwork === 'ton' ? 'UQBtBjwUwBXKsJuRr1UFdba_B1Rh8gXo0uFBzuT9-mVC17yl' : depositNetwork === 'bep20' ? '0xaaa40bd792bd26c1e5f6481b25ac1f8d4cf62f4a' : depositNetwork === 'trc20' ? 'THcEQMCe1eyfajz7TyFUe8EmW2AQuCc1do' : '0x87Ad7Fe8Be9eeEa2E388F80f4C5fcF450E037463';
-              copyText(address).then(() => showToast('Deposit address copied')).catch(() => showToast('Copy address manually'));
-            }}>Copy Deposit Address</button>
-            <input className="input" style={{ marginTop: 12 }} placeholder="Paste transaction hash" value={depositHash} onChange={(e) => setDepositHash(e.target.value.trim())} />
-            <button className="btn btn-primary" style={{ width: '100%' }} onClick={verifyDeposit} disabled={depositBusy}>
-              {depositBusy ? 'Checking blockchain…' : 'Verify Deposit'}
-            </button>
-            <div style={{ marginTop: 12, fontSize: '0.85rem', color: '#a0ffc0' }}>
-              Verified balance: <Icon name={depositNetwork === 'ton' ? 'ton' : depositNetwork === 'eth' ? 'eth' : 'usdt'} size={20} title={depositNetwork === 'ton' ? 'TON' : depositNetwork === 'eth' ? 'ETH' : depositNetwork === 'usdc_eth' ? 'USDC' : 'USDT'} /> {Number(depositData.balances?.[depositNetwork] || 0).toFixed(depositNetwork === 'ton' || depositNetwork === 'eth' ? 9 : 6)} {depositNetwork === 'usdc_eth' ? 'USDC' : depositNetwork === 'eth' ? 'ETH' : depositNetwork === 'ton' ? 'TON' : 'USDT'}
-            </div>
-            <div style={{ fontSize: '0.72rem', color: '#888', marginTop: 5 }}>
-              {depositNetwork === 'ton' ? 'TON sender must match your TON Connect signature-verified wallet. Connect your TON wallet above before submitting a deposit.' : 'Ethereum deposits require ETH or native USDC ERC20 on Ethereum Mainnet. The sender must match your signature-verified EVM wallet. Each transaction hash can be credited once.'}
-            </div>
           </div>
 
           <div className="card">
@@ -3137,6 +3047,10 @@ const locked = !claimed && !current;
         <button className={`nav-item ${tab === 'leaderboard' ? 'active' : ''}`} onClick={() => setTab('leaderboard')}>
           <span className="nav-icon-wrap"><Icon name="trophy" size={22} /></span>
           <span className="nav-label">Rank</span>
+        </button>
+        <button className={`nav-item ${tab === 'swap' ? 'active' : ''}`} onClick={() => setTab('swap')}>
+          <span className="nav-icon-wrap"><Icon name="arrow-left-right" size={22} /></span>
+          <span className="nav-label">Swap</span>
         </button>
         <button className={`nav-item ${tab === 'wallet' ? 'active' : ''}`} onClick={() => setTab('wallet')}>
           <span className="nav-icon-wrap"><Icon name="wallet" size={22} /></span>
