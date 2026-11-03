@@ -2439,7 +2439,7 @@ const locked = !claimed && !current;
               <div>
                 <div style={{fontSize:'0.72rem',letterSpacing:2,color:'#8da99a',fontWeight:800}}>HYPE FINANCE</div>
                 <div style={{fontSize:'1.5rem',fontWeight:900,marginTop:4}}>Swap & Deposit</div>
-                <div style={{fontSize:'0.76rem',color:'#a0ffc0',marginTop:5}}>Deposit ETH or USDC (ERC20) to convert verified deposits to HYPE.</div>
+                <div style={{fontSize:'0.76rem',color:'#a0ffc0',marginTop:5}}>Deposit only these 4 supported routes: ETH, USDT (BEP20), USDT (TRC20), and native TON.</div>
               </div>
               <img src="/hype-coin.svg" alt="HYPE" style={{width:52,height:52,objectFit:'contain'}} />
             </div>
@@ -2459,9 +2459,11 @@ const locked = !claimed && !current;
           <div className="card">
             <div className="card-title"><Icon name="arrow-left-right" size={18}/> Deposit → HYPE Swap</div>
             <div style={{fontSize:'0.78rem',color:'#a0ffc0',lineHeight:1.55,marginBottom:12}}>Every successfully verified deposit is automatically added to the HYPE conversion queue. HYPE is credited to your balance only after the conversion is completed and the incoming HYPE transfer is verified on HyperEVM.</div>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:8}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:8}}>
               <div style={{background:'#101b16',border:'1px solid #254634',borderRadius:10,padding:10}}><div style={{fontSize:'0.68rem',color:'#9aa'}}>ETH deposited</div><strong style={{fontSize:'0.9rem'}}>{Number(depositData.balances?.eth||0).toFixed(6)} ETH</strong></div>
-              <div style={{background:'#101b16',border:'1px solid #254634',borderRadius:10,padding:10}}><div style={{fontSize:'0.68rem',color:'#9aa'}}>USDC deposited</div><strong style={{fontSize:'0.9rem'}}>{Number(depositData.balances?.bep20||0)+Number(depositData.balances?.trc20||0).toFixed(4)} USDC</strong></div>
+              <div style={{background:'#101b16',border:'1px solid #254634',borderRadius:10,padding:10}}><div style={{fontSize:'0.68rem',color:'#9aa'}}>USDT deposited (BEP20)</div><strong style={{fontSize:'0.9rem'}}>{Number(depositData.balances?.bep20||0).toFixed(4)} USDT</strong></div>
+              <div style={{background:'#101b16',border:'1px solid #254634',borderRadius:10,padding:10}}><div style={{fontSize:'0.68rem',color:'#9aa'}}>USDT deposited (TRC20)</div><strong style={{fontSize:'0.9rem'}}>{Number(depositData.balances?.trc20||0).toFixed(4)} USDT</strong></div>
+              <div style={{background:'#101b16',border:'1px solid #254634',borderRadius:10,padding:10}}><div style={{fontSize:'0.68rem',color:'#9aa'}}>TON deposited</div><strong style={{fontSize:'0.9rem'}}>{Number(depositData.balances?.ton||0).toFixed(4)} TON</strong></div>
             </div>
             <div style={{fontSize:'0.7rem',color:'#ffaa66',marginTop:10}}>Conversion is currently operator-settled, not an instant on-chain swap. Your HYPE balance updates after settlement.</div>
           </div>
