@@ -3227,6 +3227,36 @@ const locked = !claimed && !current;
             ))}
           </div>
 
+          {adminTab === 'deposits' && (
+            <div className="card">
+              <div className="card-title">Deposit → HYPE Swap Approval</div>
+              <div style={{fontSize:'0.75rem',color:'#ffaa00',marginBottom:10}}>
+                Admin approval only queues the swap. On-chain swap execution is paused until a secure signer and network route are configured. No HYPE is credited by this approval.
+              </div>
+              {adminDepositSwaps.length === 0 && <div>No deposits awaiting approval.</div>}
+              {adminDepositSwaps.map((o) => (
+                <div key={o.id} style={{padding:'10px 0',borderBottom:'1px solid rgba(0,255,136,0.12)'}}>
+                  <div><strong>@{o.username || o.user_id}</strong> · {o.from_amount} {o.from_asset}</div>
+                  <div style={{fontSize:'0.72rem',color:'#9aa',margin:'4px 0'}}>Network: {o.from_network} · Status: {o.status}</div>
+                  <div style={{fontSize:'0.68rem',overflowWrap:'anywhere'}}>TX: {o.source_tx_hash}</div>
+                  <div style={{display:'flex',gap:8,marginTop:8}}>
+                    <button className="btn btn-primary" onClick={async () => {
+                      const d = await api('/api/admin/deposit-swaps/' + o.id, {method:'POST',body:JSON.stringify({action:'approve'})});
+                      if (d.success) { showToast('Approved and queued; swap is not executed yet'); setAdminDepositSwaps((old)=>old.filter(x=>x.id!==o.id)); }
+                      else showToast(d.error || 'Approval failed');
+                    }}>Approve & Queue</button>
+                    <button className="btn btn-danger" onClick={async () => {
+                      const d = await api('/api/admin/deposit-swaps/' + o.id, {method:'POST',body:JSON.stringify({action:'reject'})});
+                      if (d.success) setAdminDepositSwaps((old)=>old.filter(x=>x.id!==o.id));
+                      else showToast(d.error || 'Reject failed');
+                    }}>Reject</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+
           {adminTab === 'activity' && (
             <div className="card">
               <div className="card-title"><Icon name="chart" size={16} /> All User Transactions</div>
