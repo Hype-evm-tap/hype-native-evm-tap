@@ -1367,7 +1367,7 @@ showToast(data.error || 'Already checked in today');
       setAdStatus('Monetag confirmed the ad; reward is pending server postback. Check balance shortly.');
     } catch (e) {
       setAdStatus(e?.message || 'Ad could not be shown. Please try again.');
-    } finally { setAdBusy(false); }
+    } finally { await loadAdUsage(); setAdBusy(false); }
   };
 
   const verifyTask = async (taskId) => {
