@@ -1492,12 +1492,14 @@ showToast(data.error || 'Already checked in today');
       setWalletConnecting(true);
       let ui = tonConnectUIRef.current;
       if (!ui) {
-        const { TonConnectUI, CHAIN } = await import('@tonconnect/ui');
+        const tonConnectModule = await import('@tonconnect/ui');
+        const TonConnectUI = tonConnectModule.TonConnectUI || tonConnectModule.default?.TonConnectUI;
+        if (typeof TonConnectUI !== 'function') throw new Error('TON Connect UI failed to load. Please refresh and try again.');
         ui = new TonConnectUI({
           manifestUrl: window.location.origin + '/tonconnect-manifest.json',
           enableAndroidBackHandler: false,
         });
-        ui.setConnectionNetwork(CHAIN.MAINNET);
+        ui.setConnectionNetwork('-239');
         ui.onStatusChange(async (wallet) => {
           if (!wallet) return;
           const item = wallet.connectItems?.tonProof;
