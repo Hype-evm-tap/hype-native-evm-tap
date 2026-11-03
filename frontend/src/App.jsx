@@ -1559,13 +1559,38 @@ showToast(data.error || 'Already checked in today');
         });
         ui.setConnectionNetwork('-239');
         ui.onStatusChange(async (wallet) => {
-          if (!wallet) return;
-          const item = wallet.connectItems?.tonProof;
-          if (!item || !('proof' in item)) {
-            showToast('This TON wallet did not return TON proof. Try Tonkeeper or another TON mainnet wallet.');
-            try { await ui.disconnect(); } catch (_) {}
+          if (!wallet) {
+            setTonWallet(null);
             return;
           }
+
+          // TonConnect restores an existing session when Telegram returns from
+          // Tonkeeper. Restored Wallet objects do not contain connectItems/tonProof;
+          // that proof is only supplied during the original connection handshake.
+          // Do not disconnect a valid, previously verified wallet on session restore.
+          const item = wallet.connectItems?.tonProof;
+          if (!item || !('proof' in item)) {
+            try {
+              const saved = await api('/api/ton-wallet');
+              const linked = saved?.wallet;
+              const walletAddress = String(wallet.account?.address || '');
+              if (linked?.address_raw && linked.address_raw === walletAddress) {
+                setTonWallet({
+                  address_friendly: linked.address_friendly,
+                  address_raw: linked.address_raw,
+                });
+                return;
+              }
+            } catch (error) {
+              console.warn('TON wallet session restore check failed:', error);
+            }
+            // Keep the session connected; ask for a fresh proof only if it has
+            // never been verified by this app. Disconnecting here causes a loop
+            // every time Telegram restores the Mini App.
+            showToast('TON wallet connected. Reconnect once to verify ownership.');
+            return;
+          }
+
           if (tonProofVerifyingRef.current) return;
           tonProofVerifyingRef.current = true;
           try {
@@ -1596,8 +1621,18 @@ showToast(data.error || 'Already checked in today');
       } else {
         tonConnectUIRef.current = ui;
       }
+      // A restored/active session is already connected. Do not disconnect it
+      // just because the user reopened the wallet screen in Telegram.
       if (ui.connected) {
-        await ui.disconnect();
+        const saved = await api('/api/ton-wallet');
+        if (saved?.wallet) {
+          setTonWallet({
+            address_friendly: saved.wallet.address_friendly,
+            address_raw: saved.wallet.address_raw,
+          });
+        }
+        showToast('TON wallet is already connected');
+        return;
       }
       ui.setConnectRequestParameters({ state: 'loading' });
       const challenge = await api('/api/ton-proof/payload', { method: 'POST', body: '{}' });
