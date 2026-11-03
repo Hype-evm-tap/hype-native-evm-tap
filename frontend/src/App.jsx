@@ -2472,7 +2472,7 @@ const locked = !claimed && !current;
               {['eth', 'bep20', 'trc20', 'ton'].map((network) => (
                 <button key={network} className={`admin-tab ${depositNetwork === network ? 'active' : ''}`} onClick={() => setDepositNetwork(network)} title={network === 'ton' ? 'TON / GRAM' : network === 'bep20' ? 'USDT BNB Smart Chain' : network === 'trc20' ? 'USDT TRON' : network === 'eth' ? 'ETH Ethereum'} aria-label={network === 'ton' ? 'TON / GRAM' : network === 'bep20' ? 'USDT BEP20' : network === 'trc20' ? 'USDT TRC20' : network === 'eth' ? 'ETH Ethereum'}>
                   <Icon name={network === 'ton' ? 'ton' : network === 'eth' ? 'eth' : 'usdt'} size={22} />
-                  <span style={{ fontSize: '0.72rem', marginLeft: 4 }}>{network === 'ton' ? 'TON' : network === 'bep20' ? 'BEP20' : network === 'trc20' ? 'TRC20' : network === 'eth' ? 'ETH'}</span>
+                  <span style={{ fontSize: '0.72rem', marginLeft: 4 }}>{network === 'ton' ? 'TON' : network === 'bep20' ? 'USDT BEP20' : network === 'trc20' ? 'USDT TRC20' : 'ETH'}</span>
                 </button>
               ))}
             </div>
@@ -2494,7 +2494,7 @@ const locked = !claimed && !current;
               Verified balance: <Icon name={depositNetwork === 'ton' ? 'ton' : depositNetwork === 'eth' ? 'eth' : 'usdt'} size={20} title={depositNetwork === 'ton' ? 'TON' : depositNetwork === 'eth' ? 'ETH' : 'USDT'} /> {Number(depositData.balances?.[depositNetwork] || 0).toFixed(depositNetwork === 'ton' || depositNetwork === 'eth' ? 9 : 6)} {depositNetwork === 'eth' ? 'ETH' : depositNetwork === 'ton' ? 'TON' : 'USDT'}
             </div>
             <div style={{ fontSize: '0.72rem', color: '#888', marginTop: 5 }}>
-              {depositNetwork === 'ton' ? 'TON sender must match your TON Connect signature-verified wallet. Connect your TON wallet above before submitting a deposit.' : 'Ethereum deposits require native ETH on Ethereum Mainnet. The sender must match your signature-verified EVM wallet. Each transaction hash can be credited once.'}
+              {depositNetwork === 'ton' ? 'TON sender must match your TON Connect signature-verified wallet. Connect your TON wallet from the Wallet tab before submitting a deposit.' : depositNetwork === 'eth' ? 'Send native ETH on Ethereum Mainnet. The sender must match your signature-verified EVM wallet. Each transaction hash can be credited once.' : 'Send USDT only on the selected network. The sender must match your linked wallet (TRON address derived from your linked EVM wallet for TRC20). Each transaction hash can be credited once.'}
             </div>
           </div>
 
