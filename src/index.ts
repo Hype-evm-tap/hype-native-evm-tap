@@ -14,6 +14,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { recoverMessageAddress } from 'viem';
+import { Address, Cell, contractAddress, loadStateInit, WalletContractV1R1, WalletContractV1R2, WalletContractV1R3, WalletContractV2R1, WalletContractV2R2, WalletContractV3R1, WalletContractV3R2, WalletContractV4 as WalletContractV4R2, WalletContractV5R1 } from '@ton/ton';
 
 type Bindings = {
   DB: D1Database;
@@ -330,6 +331,92 @@ function tonRawAddress(value: string): string {
     return wc + ':' + account;
   } catch { return ''; }
 }
+function concatBytes(...parts: Uint8Array[]): Uint8Array {
+  const total = parts.reduce((n, p) => n + p.length, 0);
+  const out = new Uint8Array(total); let offset = 0;
+  for (const part of parts) { out.set(part, offset); offset += part.length; }
+  return out;
+}
+function hexBytes(hex: string): Uint8Array {
+  if (!/^(?:[a-f0-9]{2})+$/i.test(hex)) throw new Error('Invalid hex bytes');
+  return Uint8Array.from(hex.match(/.{2}/g) || [], (x) => parseInt(x, 16));
+}
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+function littleEndian(value: bigint, size: number): Uint8Array {
+  const out = new Uint8Array(size);
+  for (let i = 0; i < size; i++) { out[i] = Number(value & 255n); value >>= 8n; }
+  return out;
+}
+function extractTonWalletPublicKey(stateInit: any): Uint8Array {
+  const dummy = new Uint8Array(32);
+  const wallets: any[] = [
+    { contract: WalletContractV1R1, load: (s: any) => { s.loadUint(32); return s.loadBuffer(32); } },
+    { contract: WalletContractV1R2, load: (s: any) => { s.loadUint(32); return s.loadBuffer(32); } },
+    { contract: WalletContractV1R3, load: (s: any) => { s.loadUint(32); return s.loadBuffer(32); } },
+    { contract: WalletContractV2R1, load: (s: any) => { s.loadUint(32); s.loadUint(32); return s.loadBuffer(32); } },
+    { contract: WalletContractV2R2, load: (s: any) => { s.loadUint(32); s.loadUint(32); return s.loadBuffer(32); } },
+    { contract: WalletContractV3R1, load: (s: any) => { s.loadUint(32); s.loadUint(32); return s.loadBuffer(32); } },
+    { contract: WalletContractV3R2, load: (s: any) => { s.loadUint(32); s.loadUint(32); return s.loadBuffer(32); } },
+    { contract: WalletContractV4R2, load: (s: any) => { s.loadUint(32); s.loadUint(32); return s.loadBuffer(32); } },
+    { contract: WalletContractV5R1, load: (s: any) => { s.loadBoolean(); s.loadUint(32); s.loadUint(32); return s.loadBuffer(32); } },
+  ];
+  const wanted = bytesToHex(stateInit.code.hash());
+  for (const item of wallets) {
+    const code = item.contract.create({ workchain: 0, publicKey: dummy }).init.code;
+    if (bytesToHex(code.hash()) === wanted) {
+      const key = new Uint8Array(item.load(stateInit.data.beginParse()));
+      if (key.length !== 32) throw new Error('Invalid TON wallet public key');
+      return key;
+    }
+  }
+  throw new Error('Unsupported TON wallet contract. Use a standard TON wallet (V1–V5).');
+}
+async function verifyTonConnectProof(input: any, expectedDomain: string, expectedPayload: string): Promise<{ addressRaw: string; addressFriendly: string; publicKey: string; network: string }> {
+  const address = Address.parse(String(input.address || ''));
+  const network = String(input.network || '');
+  if (network !== '-239') throw new Error('Connect a TON mainnet wallet.');
+  const proof = input.proof || {};
+  const timestamp = Number(proof.timestamp);
+  if (!Number.isSafeInteger(timestamp) || Math.abs(nowSec() - timestamp) > 600) throw new Error('TON wallet proof expired. Reconnect your wallet.');
+  const domain = String(proof.domain?.value || '');
+  const domainBytes = new TextEncoder().encode(domain);
+  if (domain !== expectedDomain || Number(proof.domain?.lengthBytes) !== domainBytes.length) throw new Error('TON proof domain mismatch.');
+  if (String(proof.payload || '') !== expectedPayload) throw new Error('TON proof challenge mismatch.');
+  const stateInitBoc = String(input.wallet_state_init || '');
+  if (!stateInitBoc) throw new Error('TON wallet state init is missing.');
+  const stateInit = loadStateInit(Cell.fromBase64(stateInitBoc).beginParse());
+  const derived = contractAddress(address.workChain, stateInit);
+  if (!derived.equals(address)) throw new Error('TON wallet address does not match its state init.');
+  const publicKey = extractTonWalletPublicKey(stateInit);
+  if (input.public_key && String(input.public_key).toLowerCase() !== bytesToHex(publicKey)) throw new Error('TON wallet public key mismatch.');
+  const workchain = new Uint8Array(4);
+  new DataView(workchain.buffer).setInt32(0, address.workChain, false);
+  const domainLength = new Uint8Array(4);
+  new DataView(domainLength.buffer).setUint32(0, domainBytes.length, true);
+  const timestampBytes = littleEndian(BigInt(timestamp), 8);
+  const payloadBytes = new TextEncoder().encode(expectedPayload);
+  const message = concatBytes(new TextEncoder().encode('ton-proof-item-v2/'), workchain, hexBytes(address.hash.toString('hex')), domainLength, domainBytes, timestampBytes, payloadBytes);
+  const messageHash = new Uint8Array(await crypto.subtle.digest('SHA-256', message));
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', concatBytes(new Uint8Array([255, 255]), new TextEncoder().encode('ton-connect'), messageHash)));
+  const signatureBinary = atob(String(proof.signature || ''));
+  const signature = Uint8Array.from(signatureBinary, (ch) => ch.charCodeAt(0));
+  if (signature.length !== 64) throw new Error('Invalid TON wallet signature.');
+  const key = await crypto.subtle.importKey('raw', publicKey, { name: 'Ed25519' } as any, false, ['verify']);
+  const valid = await crypto.subtle.verify({ name: 'Ed25519' } as any, key, signature, digest);
+  if (!valid) throw new Error('TON wallet signature is invalid.');
+  return { addressRaw: address.toRawString(), addressFriendly: address.toString({ bounceable: true, urlSafe: true }), publicKey: bytesToHex(publicKey), network };
+}
+async function ensureTonProofTables(db: D1Database) {
+  await db.prepare('CREATE TABLE IF NOT EXISTS ton_proof_challenges (user_id INTEGER PRIMARY KEY, payload TEXT NOT NULL, expires_at INTEGER NOT NULL)').run();
+  await db.prepare('CREATE TABLE IF NOT EXISTS ton_wallet_links (user_id INTEGER PRIMARY KEY, address_raw TEXT NOT NULL UNIQUE, address_friendly TEXT NOT NULL, public_key TEXT NOT NULL, network TEXT NOT NULL, verified_at INTEGER NOT NULL)').run();
+}
+async function ensureActivityTables(db: D1Database) {
+  await ensureDepositTable(db);
+  await db.prepare("CREATE TABLE IF NOT EXISTS swap_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, from_asset TEXT NOT NULL, to_asset TEXT NOT NULL, from_amount TEXT NOT NULL, to_amount TEXT NOT NULL, tx_hash TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'completed', created_at INTEGER NOT NULL)").run();
+}
+
 async function verifyTonDeposit(hashInput: string, apiKey: string) {
   if (!apiKey) throw new Error('TON verification is not configured. Contact support.');
   const hash = tonHashHex(hashInput);
@@ -444,8 +531,15 @@ app.post('/api/deposits/verify', async (c) => {
     // deterministically derived from the linked EVM address and compared exactly.
     const linked = await c.env.DB.prepare('SELECT wallet_address FROM users WHERE id = ?').bind(userId).first<any>();
     const linkedEvm = String(linked?.wallet_address || '').trim();
-    if (!/^0x[a-fA-F0-9]{40}$/.test(linkedEvm)) {
-      return c.json({ error: 'Connect and sign your wallet first. Deposit sender ownership cannot be verified without a linked wallet.' }, 403);
+    if (network === 'ton') {
+      await ensureTonProofTables(c.env.DB);
+      const tonLink = await c.env.DB.prepare('SELECT address_raw FROM ton_wallet_links WHERE user_id = ?').bind(userId).first<any>();
+      if (!tonLink?.address_raw) return c.json({ error: 'Connect and verify your TON wallet with TON Connect first.' }, 403);
+      if (tonRawAddress(String(verified.from || '')) !== String(tonLink.address_raw)) {
+        return c.json({ error: 'TON transaction sender does not match your verified TON wallet. No balance was credited.' }, 403);
+      }
+    } else if (!/^0x[a-fA-F0-9]{40}$/.test(linkedEvm)) {
+      return c.json({ error: 'Connect and sign your EVM wallet first. Sender ownership cannot be verified without a linked wallet.' }, 403);
     }
     if (network === 'bep20' && String(verified.from || '').toLowerCase() !== linkedEvm.toLowerCase()) {
       return c.json({ error: 'Sender wallet does not match your signature-verified wallet. No balance was credited.' }, 403);
@@ -457,9 +551,6 @@ app.post('/api/deposits/verify', async (c) => {
       if (!expectedTron || (actualTron !== expectedTron && actualTron.toLowerCase() !== expectedTronHex)) {
         return c.json({ error: 'TRON sender does not match the TRON address derived from your linked wallet. No balance was credited.' }, 403);
       }
-    }
-    if (network === 'ton') {
-      return c.json({ error: 'TON sender ownership proof is not yet linked. TON deposit is safely blocked until TON Connect wallet proof is enabled.' }, 403);
     }
     const amount = String(verified.amount);
     if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) return c.json({ error: 'Invalid on-chain transfer amount.' }, 400);
@@ -473,6 +564,45 @@ app.post('/api/deposits/verify', async (c) => {
   } catch (e: any) { return c.json({ error: e?.message || 'Deposit verification failed' }, 400); }
 });
 
+
+app.post('/api/ton-proof/payload', async (c) => {
+  try {
+    const userId = c.get('tgUser').id;
+    await ensureTonProofTables(c.env.DB);
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    const payload = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    await c.env.DB.prepare('INSERT INTO ton_proof_challenges (user_id, payload, expires_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET payload = excluded.payload, expires_at = excluded.expires_at')
+      .bind(userId, payload, nowSec() + 300).run();
+    return c.json({ payload });
+  } catch (e: any) { return c.json({ error: e?.message || 'Could not create TON proof challenge' }, 500); }
+});
+app.post('/api/ton-proof/verify', async (c) => {
+  try {
+    const userId = c.get('tgUser').id;
+    const body = await c.req.json().catch(() => ({}));
+    await ensureTonProofTables(c.env.DB);
+    const challenge = await c.env.DB.prepare('SELECT payload, expires_at FROM ton_proof_challenges WHERE user_id = ?').bind(userId).first<any>();
+    if (!challenge || Number(challenge.expires_at) < nowSec()) return c.json({ error: 'TON wallet challenge expired. Reconnect.' }, 401);
+    const expectedDomain = new URL(c.req.url).hostname;
+    const verified = await verifyTonConnectProof(body, expectedDomain, String(challenge.payload));
+    await c.env.DB.batch([
+      c.env.DB.prepare('DELETE FROM ton_proof_challenges WHERE user_id = ? AND payload = ?').bind(userId, challenge.payload),
+      c.env.DB.prepare('INSERT INTO ton_wallet_links (user_id, address_raw, address_friendly, public_key, network, verified_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET address_raw = excluded.address_raw, address_friendly = excluded.address_friendly, public_key = excluded.public_key, network = excluded.network, verified_at = excluded.verified_at')
+        .bind(userId, verified.addressRaw, verified.addressFriendly, verified.publicKey, verified.network, nowSec()),
+    ]);
+    return c.json({ success: true, address: verified.addressFriendly, address_raw: verified.addressRaw });
+  } catch (e: any) { return c.json({ error: e?.message || 'TON wallet proof verification failed' }, 401); }
+});
+app.get('/api/ton-wallet', async (c) => {
+  await ensureTonProofTables(c.env.DB);
+  const linked = await c.env.DB.prepare('SELECT address_friendly, address_raw, verified_at FROM ton_wallet_links WHERE user_id = ?').bind(c.get('tgUser').id).first<any>();
+  return c.json({ wallet: linked || null });
+});
+app.post('/api/ton-wallet/disconnect', async (c) => {
+  await ensureTonProofTables(c.env.DB);
+  await c.env.DB.prepare('DELETE FROM ton_wallet_links WHERE user_id = ?').bind(c.get('tgUser').id).run();
+  return c.json({ success: true });
+});
 
 app.post('/api/wallet/challenge', async (c) => {
   try {
@@ -791,6 +921,58 @@ app.post('/api/withdraw', async (c) => {
     const updated = await c.env.DB.prepare('SELECT balance FROM users WHERE id = ?').bind(u.id).first<any>();
     return c.json({ success: true, balance: Number(updated?.balance) || 0, message: 'Withdrawal request submitted' });
   } catch (e: any) { return c.json({ error: e.message }, 400); }
+});
+
+app.get('/api/history', async (c) => {
+  const userId = c.get('tgUser').id;
+  await ensureActivityTables(c.env.DB);
+  const { results } = await c.env.DB.prepare(`
+    SELECT * FROM (
+      SELECT d.id, 'deposit' AS type, d.token AS asset, d.amount AS amount, d.network AS network,
+        d.tx_hash AS tx_hash, 'completed' AS status, d.created_at AS created_at,
+        u.id AS user_id, u.username, u.first_name, u.last_name, d.from_address AS from_address,
+        d.to_address AS to_address, '' AS to_asset, '' AS to_amount
+      FROM crypto_deposits d JOIN users u ON u.id = d.user_id WHERE d.user_id = ?
+      UNION ALL
+      SELECT w.id, 'withdrawal' AS type, 'HYPE' AS asset, CAST(w.amount AS TEXT) AS amount, 'HyperEVM' AS network,
+        '' AS tx_hash, w.status AS status, CAST(strftime('%s', w.created_at) AS INTEGER) AS created_at,
+        u.id AS user_id, u.username, u.first_name, u.last_name, '' AS from_address,
+        w.wallet_address AS to_address, '' AS to_asset, '' AS to_amount
+      FROM withdrawals w JOIN users u ON u.id = w.user_id WHERE w.user_id = ?
+      UNION ALL
+      SELECT s.id, 'swap' AS type, s.from_asset AS asset, s.from_amount AS amount, 'Swap' AS network,
+        s.tx_hash AS tx_hash, s.status AS status, s.created_at AS created_at,
+        u.id AS user_id, u.username, u.first_name, u.last_name, '' AS from_address,
+        '' AS to_address, s.to_asset AS to_asset, s.to_amount AS to_amount
+      FROM swap_history s JOIN users u ON u.id = s.user_id WHERE s.user_id = ?
+    ) ORDER BY created_at DESC LIMIT 100
+  `).bind(userId, userId, userId).all();
+  return c.json({ history: results || [] });
+});
+app.get('/api/admin/history', async (c) => {
+  await ensureActivityTables(c.env.DB);
+  const { results } = await c.env.DB.prepare(`
+    SELECT * FROM (
+      SELECT d.id, 'deposit' AS type, d.token AS asset, d.amount AS amount, d.network AS network,
+        d.tx_hash AS tx_hash, 'completed' AS status, d.created_at AS created_at,
+        u.id AS user_id, u.username, u.first_name, u.last_name, d.from_address AS from_address,
+        d.to_address AS to_address, '' AS to_asset, '' AS to_amount
+      FROM crypto_deposits d JOIN users u ON u.id = d.user_id
+      UNION ALL
+      SELECT w.id, 'withdrawal' AS type, 'HYPE' AS asset, CAST(w.amount AS TEXT) AS amount, 'HyperEVM' AS network,
+        '' AS tx_hash, w.status AS status, CAST(strftime('%s', w.created_at) AS INTEGER) AS created_at,
+        u.id AS user_id, u.username, u.first_name, u.last_name, '' AS from_address,
+        w.wallet_address AS to_address, '' AS to_asset, '' AS to_amount
+      FROM withdrawals w JOIN users u ON u.id = w.user_id
+      UNION ALL
+      SELECT s.id, 'swap' AS type, s.from_asset AS asset, s.from_amount AS amount, 'Swap' AS network,
+        s.tx_hash AS tx_hash, s.status AS status, s.created_at AS created_at,
+        u.id AS user_id, u.username, u.first_name, u.last_name, '' AS from_address,
+        '' AS to_address, s.to_asset AS to_asset, s.to_amount AS to_amount
+      FROM swap_history s JOIN users u ON u.id = s.user_id
+    ) ORDER BY created_at DESC LIMIT 300
+  `).all();
+  return c.json({ history: results || [] });
 });
 
 app.get('/api/withdrawals', async (c) => {
