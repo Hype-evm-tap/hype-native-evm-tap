@@ -314,6 +314,29 @@ const USDT_CONTRACTS = {
 const ETHEREUM_USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
 const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 
+
+async function ensureDepositSwapTables(db: D1Database) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS deposit_swap_ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
+    deposit_network TEXT NOT NULL, deposit_tx_hash TEXT NOT NULL, asset TEXT NOT NULL,
+    amount TEXT NOT NULL, entry_type TEXT NOT NULL CHECK (entry_type IN ('deposit','reserve','swap_debit','swap_credit','release','withdrawal')),
+    reference_type TEXT, reference_id TEXT, idempotency_key TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'posted' CHECK (status IN ('pending','posted','reversed')),
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    UNIQUE (deposit_network, deposit_tx_hash, entry_type, idempotency_key)
+  )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS deposit_swap_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, ledger_deposit_id INTEGER NOT NULL,
+    request_key TEXT NOT NULL UNIQUE, from_network TEXT NOT NULL, from_asset TEXT NOT NULL,
+    from_amount TEXT NOT NULL, to_asset TEXT NOT NULL DEFAULT 'HYPE' CHECK (to_asset = 'HYPE'),
+    quoted_hype_amount TEXT, received_hype_amount TEXT, provider TEXT, quote_reference TEXT,
+    source_tx_hash TEXT, swap_tx_hash TEXT,
+    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','processing','submitted','completed','failed','refunded')),
+    error_code TEXT, error_message TEXT,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')), updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+  )`).run();
+}
+
 async function ensureDepositTable(db: D1Database) {
   await db.prepare('CREATE TABLE IF NOT EXISTS crypto_deposits (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, network TEXT NOT NULL, tx_hash TEXT NOT NULL, amount TEXT NOT NULL, token TEXT NOT NULL, from_address TEXT, to_address TEXT NOT NULL, created_at INTEGER NOT NULL, UNIQUE(network, tx_hash))').run();
 }
@@ -612,8 +635,23 @@ app.post('/api/deposits/verify', async (c) => {
     }
     const amount = String(verified.amount);
     if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) return c.json({ error: 'Invalid on-chain transfer amount.' }, 400);
+    await ensureDepositSwapTables(c.env.DB);
     const inserted = await c.env.DB.prepare('INSERT OR IGNORE INTO crypto_deposits (user_id, network, tx_hash, amount, token, from_address, to_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(userId, network, normalizedHash, amount, verified.token || (network === 'ton' ? 'TON' : 'USDT'), verified.from || '', verified.to, nowSec()).run();
     if ((inserted.meta?.changes ?? 0) === 0) return c.json({ error: 'This transaction has already been credited.' }, 409);
+    const asset = String(verified.token || (network === 'ton' ? 'TON' : 'USDT')).toUpperCase();
+    const ledgerKey = 'deposit:' + network + ':' + normalizedHash;
+    const ledgerInsert = await c.env.DB.prepare(
+      "INSERT OR IGNORE INTO deposit_swap_ledger (user_id, deposit_network, deposit_tx_hash, asset, amount, entry_type, reference_type, reference_id, idempotency_key, status) VALUES (?, ?, ?, ?, ?, 'deposit', 'crypto_deposit', ?, ?, 'posted')"
+    ).bind(userId, network, normalizedHash, asset, amount, normalizedHash, ledgerKey).run();
+    const ledger = await c.env.DB.prepare(
+      "SELECT id FROM deposit_swap_ledger WHERE idempotency_key = ?"
+    ).bind(ledgerKey).first<any>();
+    if (ledger?.id) {
+      const requestKey = 'swap:' + network + ':' + normalizedHash;
+      await c.env.DB.prepare(
+        "INSERT OR IGNORE INTO deposit_swap_orders (user_id, ledger_deposit_id, request_key, from_network, from_asset, from_amount, source_tx_hash, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued')"
+      ).bind(userId, ledger.id, requestKey, network, asset, amount, normalizedHash).run();
+    }
     const { results } = await c.env.DB.prepare('SELECT id, network, tx_hash, amount, token, created_at FROM crypto_deposits WHERE user_id = ? ORDER BY id DESC LIMIT 30').bind(userId).all();
     const totals = await c.env.DB.prepare('SELECT network, SUM(CAST(amount AS REAL)) AS amount FROM crypto_deposits WHERE user_id = ? GROUP BY network').bind(userId).all();
     const balances: any = { ton: 0, bep20: 0, trc20: 0 };
@@ -1047,6 +1085,39 @@ app.post('/api/withdrawals', async (c) => {
 });
 
 // Admin
+
+app.get('/api/admin/deposit-swaps', async (c) => {
+  await ensureDepositSwapTables(c.env.DB);
+  const status = String(c.req.query('status') || 'queued');
+  const allowed = ['queued','processing','submitted','completed','failed','refunded','all'];
+  if (!allowed.includes(status)) return c.json({ error: 'Invalid status filter' }, 400);
+  const where = status === 'all' ? '' : 'WHERE o.status = ?';
+  const query = `SELECT o.id, o.user_id, u.username, u.first_name, o.from_network, o.from_asset,
+    o.from_amount, o.to_asset, o.status, o.source_tx_hash, o.swap_tx_hash, o.error_code,
+    o.error_message, o.created_at, o.updated_at
+    FROM deposit_swap_orders o LEFT JOIN users u ON u.id = o.user_id ${where}
+    ORDER BY o.id DESC LIMIT 200`;
+  const result = status === 'all'
+    ? await c.env.DB.prepare(query).all()
+    : await c.env.DB.prepare(query).bind(status).all();
+  return c.json({ orders: result.results || [] });
+});
+app.post('/api/admin/deposit-swaps/:id', async (c) => {
+  const id = Number(c.req.param('id'));
+  const body = await c.req.json().catch(() => ({}));
+  const action = String(body.action || '');
+  if (!Number.isSafeInteger(id) || id <= 0 || !['approve','reject'].includes(action))
+    return c.json({ error: 'Invalid deposit swap action' }, 400);
+  const nextStatus = action === 'approve' ? 'processing' : 'failed';
+  const result = await c.env.DB.prepare(
+    "UPDATE deposit_swap_orders SET status = ?, error_code = ?, error_message = ?, updated_at = ? WHERE id = ? AND status = 'queued'"
+  ).bind(nextStatus, action === 'approve' ? 'AWAITING_SIGNER' : 'ADMIN_REJECTED',
+    action === 'approve' ? 'Admin approved. Swap execution remains paused until a secure signer and route are configured.' : 'Rejected by admin.',
+    nowSec(), id).run();
+  if ((result.meta?.changes ?? 0) !== 1) return c.json({ error: 'Order is no longer awaiting approval.' }, 409);
+  return c.json({ success: true, status: nextStatus, swap_executed: false });
+});
+
 app.get('/api/admin/stats', async (c) => {
   const users = (await c.env.DB.prepare('SELECT COUNT(*) AS c FROM users').first<any>())?.c || 0;
   const earned = (await c.env.DB.prepare('SELECT SUM(total_earned) AS s FROM users').first<any>())?.s || 0;
