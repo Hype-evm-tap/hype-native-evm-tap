@@ -356,6 +356,25 @@ async function verifyTonDeposit(hashInput: string, apiKey: string) {
   if (raw <= 0n) throw new Error('Incoming TON amount is zero.');
   return { amount: formatUnits(raw, 9), from: String(tx.in_msg.source || ''), to: DEPOSIT_WALLETS.ton, token: 'TON' };
 }
+async function evmToTronAddress(address: string): Promise<string> {
+  const hex = String(address || '').toLowerCase().replace(/^0x/, '');
+  if (!/^[a-f0-9]{40}$/.test(hex)) return '';
+  const payload = new Uint8Array(21);
+  payload[0] = 0x41;
+  for (let i = 0; i < 20; i++) payload[i + 1] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  const first = new Uint8Array(await crypto.subtle.digest('SHA-256', payload));
+  const second = new Uint8Array(await crypto.subtle.digest('SHA-256', first));
+  const full = new Uint8Array(25);
+  full.set(payload);
+  full.set(second.slice(0, 4), 21);
+  const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  let value = 0n;
+  for (const byte of full) value = value * 256n + BigInt(byte);
+  let encoded = '';
+  while (value > 0n) { const rem = Number(value % 58n); encoded = alphabet[rem] + encoded; value /= 58n; }
+  for (const byte of full) { if (byte !== 0) break; encoded = '1' + encoded; }
+  return encoded;
+}
 async function verifyBep20Deposit(hash: string) {
   const rpc = async (method: string, params: any[]) => {
     const response = await fetch('https://bsc-dataseed.binance.org/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
@@ -416,6 +435,26 @@ app.post('/api/deposits/verify', async (c) => {
       ? await verifyTonDeposit(hash, c.env.TONCENTER_API_KEY || '')
       : network === 'bep20' ? await verifyBep20Deposit(normalizedHash) : await verifyTrc20Deposit(normalizedHash);
     if (verified.pending) return c.json({ pending: true, error: verified.error }, 202);
+    // Sender ownership: require a previously signature-verified EVM wallet.
+    // BSC and TRON use the same secp256k1 account key; the TRON address is
+    // deterministically derived from the linked EVM address and compared exactly.
+    const linked = await c.env.DB.prepare('SELECT wallet_address FROM users WHERE id = ?').bind(userId).first<any>();
+    const linkedEvm = String(linked?.wallet_address || '').trim();
+    if (!/^0x[a-fA-F0-9]{40}$/.test(linkedEvm)) {
+      return c.json({ error: 'Connect and sign your wallet first. Deposit sender ownership cannot be verified without a linked wallet.' }, 403);
+    }
+    if (network === 'bep20' && String(verified.from || '').toLowerCase() !== linkedEvm.toLowerCase()) {
+      return c.json({ error: 'Sender wallet does not match your signature-verified wallet. No balance was credited.' }, 403);
+    }
+    if (network === 'trc20') {
+      const expectedTron = await evmToTronAddress(linkedEvm);
+      if (!expectedTron || String(verified.from || '') !== expectedTron) {
+        return c.json({ error: 'TRON sender does not match the TRON address derived from your linked wallet. No balance was credited.' }, 403);
+      }
+    }
+    if (network === 'ton') {
+      return c.json({ error: 'TON sender ownership proof is not yet linked. TON deposit is safely blocked until TON Connect wallet proof is enabled.' }, 403);
+    }
     const amount = String(verified.amount);
     if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) return c.json({ error: 'Invalid on-chain transfer amount.' }, 400);
     const inserted = await c.env.DB.prepare('INSERT OR IGNORE INTO crypto_deposits (user_id, network, tx_hash, amount, token, from_address, to_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(userId, network, normalizedHash, amount, verified.token || (network === 'ton' ? 'TON' : 'USDT'), verified.from || '', verified.to, nowSec()).run();
