@@ -392,9 +392,11 @@ async function verifyBep20Deposit(hash: string) {
   const wallet = DEPOSIT_WALLETS.bep20.toLowerCase().replace('0x', '').padStart(64, '0');
   const logs = (receipt.logs || []).filter((entry: any) => String(entry.address).toLowerCase() === USDT_CONTRACTS.bep20.toLowerCase() && String(entry.topics?.[0]).toLowerCase() === TRANSFER_TOPIC && String(entry.topics?.[2] || '').toLowerCase() === '0x' + wallet);
   if (!logs.length) throw new Error('No USDT BEP20 transfer to the deposit wallet was found.');
+  const senders = [...new Set(logs.map((entry: any) => '0x' + String(entry.topics[1] || '').slice(-40).toLowerCase()))];
+  if (senders.length !== 1) throw new Error('Transaction contains transfers from multiple senders; it cannot be safely attributed to one wallet.');
   const raw = logs.reduce((sum: bigint, entry: any) => sum + BigInt(entry.data || '0x0'), 0n);
   if (raw <= 0n) throw new Error('Deposit amount is zero.');
-  return { amount: formatUnits(raw, 18), from: '0x' + String(logs[0].topics[1]).slice(-40), to: DEPOSIT_WALLETS.bep20, token: 'USDT' };
+  return { amount: formatUnits(raw, 18), from: senders[0], to: DEPOSIT_WALLETS.bep20, token: 'USDT' };
 }
 async function verifyTrc20Deposit(hash: string) {
   const infoResponse = await fetch('https://api.trongrid.io/wallet/gettransactioninfobyid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: hash }) });
@@ -408,8 +410,10 @@ async function verifyTrc20Deposit(hash: string) {
   const data: any = await response.json();
   const events = (data.data || []).filter((event: any) => event.event_name === 'Transfer' && String(event.transaction_id || '').toLowerCase() === hash.toLowerCase() && String(event.contract_address) === USDT_CONTRACTS.trc20 && String(event.result?.to) === DEPOSIT_WALLETS.trc20 && BigInt(String(event.result?.value || '0')) > 0n);
   if (!events.length) throw new Error('No confirmed USDT TRC20 transfer to the deposit wallet was found.');
+  const senders = [...new Set(events.map((event: any) => String(event.result.from || '')))];
+  if (senders.length !== 1) throw new Error('Transaction contains transfers from multiple senders; it cannot be safely attributed to one wallet.');
   const raw = events.reduce((sum: bigint, event: any) => sum + BigInt(String(event.result.value)), 0n);
-  return { amount: formatUnits(raw, 6), from: String(events[0].result.from || ''), to: DEPOSIT_WALLETS.trc20, token: 'USDT' };
+  return { amount: formatUnits(raw, 6), from: senders[0], to: DEPOSIT_WALLETS.trc20, token: 'USDT' };
 }
 app.get('/api/deposits', async (c) => {
   const userId = c.get('tgUser').id;
@@ -448,7 +452,9 @@ app.post('/api/deposits/verify', async (c) => {
     }
     if (network === 'trc20') {
       const expectedTron = await evmToTronAddress(linkedEvm);
-      if (!expectedTron || String(verified.from || '') !== expectedTron) {
+      const expectedTronHex = '41' + linkedEvm.slice(2).toLowerCase();
+      const actualTron = String(verified.from || '');
+      if (!expectedTron || (actualTron !== expectedTron && actualTron.toLowerCase() !== expectedTronHex)) {
         return c.json({ error: 'TRON sender does not match the TRON address derived from your linked wallet. No balance was credited.' }, 403);
       }
     }
