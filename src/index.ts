@@ -467,6 +467,7 @@ async function verifyTonDeposit(hashInput: string, apiKey: string) {
   const response = await fetch(url, apiKey ? { headers: { 'X-API-Key': apiKey } } : {});
   if (!response.ok) {
     if (response.status === 404) throw new Error('TON transaction was not found for the deposit wallet.');
+    if (response.status === 429) throw new Error('TON Center public rate limit reached. Retry shortly or configure TONCENTER_API_KEY in Cloudflare.');
     throw new Error('TON blockchain verification service unavailable. Try again shortly.');
   }
   const data: any = await response.json();
