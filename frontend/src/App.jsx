@@ -1856,6 +1856,15 @@ user: tg?.initDataUnsafe?.user,
           )}
         </div>
         <div className="header-right">
+          {connectedWallet ? (
+            <button className="connect-wallet-btn connected" onClick={disconnectWallet} title={connectedWallet}>
+              <Icon name="wallet" size={14} /> {shortAddr(connectedWallet)}
+            </button>
+          ) : (
+            <button className="connect-wallet-btn" onClick={connectExternalWallet} disabled={walletConnecting}>
+              <Icon name="wallet" size={14} /> {walletConnecting ? 'Connecting…' : 'Connect Wallet'}
+            </button>
+          )}
           <div className="uid-badge">
             <Icon name="folder" size={12} /> UID {user?.id || '—'}
           </div>
@@ -2557,6 +2566,14 @@ const locked = !claimed && !current;
             ))}
           </div>
 
+          <div className="card" style={{marginTop:12}}>
+            <div className="card-title"><Icon name="ton" size={18} /> TON Wallet for Swap / Deposit</div>
+            {tonWallet?.address_friendly ? <div className="wc-status"><span className="wc-dot" /> {tonWallet.address_friendly}</div> :
+              <button className="btn btn-secondary" style={{width:'100%'}} onClick={connectTonWallet} disabled={walletConnecting}>
+                <Icon name="ton" size={17} /> {walletConnecting ? 'Connecting…' : 'Connect TON Wallet'}
+              </button>}
+          </div>
+
           {/* Deposit — only 4 tokens */}
           <div className="card" style={{ marginTop: 14 }}>
             <div className="card-title"><Icon name="coins" size={16} /> Deposit</div>
@@ -2661,20 +2678,38 @@ const locked = !claimed && !current;
         <div className="page">
           <div className="card">
             <div className="card-title"><Icon name="wallet" size={16} /> Wallet</div>
-            <div className="wallet-connect-box">
-              <p style={{ color: '#a0ffc0', fontSize: '0.85rem', marginBottom: 12 }}>
-                Enter your HyperEVM withdrawal address.
-              </p>
-              <input
-                className="input"
-                placeholder="0x..."
-                value={wdWallet}
-                onChange={(e) => setWdWallet(e.target.value.trim())}
-              />
-              <button className="btn btn-secondary" style={{ width: '100%', marginTop: 8 }} onClick={() => persistWallet(wdWallet)}>
-                Save Address
-              </button>
-            </div>
+            {connectedWallet ? (
+              <div className="wallet-connected-box">
+                <div className="wc-status"><span className="wc-dot" /> EVM Wallet Connected</div>
+                <div className="wc-addr">{connectedWallet}</div>
+                <button className="btn btn-secondary" style={{width:'100%',marginTop:10}} onClick={disconnectWallet}>Disconnect</button>
+              </div>
+            ) : (
+              <div className="wallet-connect-box">
+                <p style={{color:'#a0ffc0',fontSize:'0.85rem',marginBottom:12}}>Connect MetaMask, Trust Wallet, Telegram-compatible EVM wallets or another WalletConnect wallet.</p>
+                <button className="btn btn-primary" style={{width:'100%'}} onClick={connectExternalWallet} disabled={walletConnecting}>
+                  <Icon name="wallet" size={16} /> {walletConnecting ? 'Connecting…' : 'Connect External Wallet'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="card">
+            <div className="card-title"><Icon name="ton" size={20} title="TON" /> TON Wallet Connect</div>
+            {tonWallet?.address_friendly ? (
+              <div className="wallet-connected-box">
+                <div className="wc-status"><span className="wc-dot" /> TON wallet connected & verified</div>
+                <div className="wc-addr">{tonWallet.address_friendly}</div>
+                <button className="btn btn-secondary" style={{width:'100%',marginTop:10}} onClick={disconnectTonWallet}>Disconnect TON Wallet</button>
+              </div>
+            ) : (
+              <>
+                <div style={{fontSize:'0.8rem',color:'#a0ffc0',marginBottom:10}}>Connect Telegram Wallet, Tonkeeper or another TON Connect compatible wallet. Ownership proof is required; no transfer is requested.</div>
+                <button className="btn btn-primary" style={{width:'100%'}} onClick={connectTonWallet} disabled={walletConnecting}>
+                  <Icon name="ton" size={18} /> {walletConnecting ? 'Connecting…' : 'Connect TON Wallet'}
+                </button>
+              </>
+            )}
           </div>
 
           <div className="card">
