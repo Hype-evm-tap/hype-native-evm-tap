@@ -740,46 +740,63 @@ const persistWallet = async (addr, walletProvider = null) => {
   };
 
   const connectExternalWallet = async () => {
-    if (connectedWallet) return;
+    if (connectedWallet || walletConnecting) return;
     setWalletConnecting(true);
+
+    // Telegram Mini Apps run inside Telegram's WebView. An injected ethereum
+    // provider there can hand off to Trust Wallet without creating a WalletConnect
+    // session, which leaves Trust Wallet open with no sign-in request. Prefer
+    // WalletConnect in Telegram; use injected providers in a normal wallet browser.
+    const inTelegram = Boolean(window.Telegram?.WebApp?.initData);
+
+    const connectWithWalletConnect = async () => {
+      const addr = await connectWalletConnect();
+      if (!addr) throw new Error('WalletConnect returned no account');
+      const saved = await persistWallet(addr, wcProviderRef.current);
+      if (!saved) throw new Error('Wallet signature was not verified');
+      return true;
+    };
+
+    const connectWithInjected = async () => {
+      const injected = await connectInjected();
+      if (!injected) return false;
+      return persistWallet(injected.address, injected.provider);
+    };
+
     try {
-      // 1) Injected browser wallet
-      try {
-        const injected = await connectInjected();
-        if (injected) {
-          const saved = await persistWallet(injected.address, injected.provider);
-          if (saved) return;
-          // If the injected provider cannot sign, continue to WalletConnect instead of stopping.
+      if (inTelegram) {
+        try {
+          await connectWithWalletConnect();
+          return;
+        } catch (e) {
+          console.warn('Telegram WalletConnect failed:', e);
+          const msg = e?.message || '';
+          if (msg.includes('Project ID') || msg.includes('WALLETCONNECT')) {
+            showToast('WalletConnect Project ID missing. Check Worker configuration.');
+          } else if (msg.includes('User rejected') || msg.includes('denied') || msg.includes('cancelled')) {
+            showToast('Wallet connection cancelled');
+          } else {
+            showToast(msg.slice(0, 95) || 'WalletConnect failed');
+          }
+          return;
         }
+      }
+
+      // Outside Telegram, prefer the wallet's injected provider.
+      try {
+        if (await connectWithInjected()) return;
       } catch (e) {
         console.warn('Injected wallet failed:', e);
       }
 
-      // 2) WalletConnect v2 modal (MetaMask mobile, Trust, Rainbow, etc.)
       try {
-        const addr = await connectWalletConnect();
-        if (addr) {
-          const saved = await persistWallet(addr, wcProviderRef.current);
-          if (saved) return;
-          return;
-        }
-        showToast('No account returned from WalletConnect');
-        return;
+        await connectWithWalletConnect();
       } catch (e) {
         console.warn('WalletConnect failed:', e);
-        const msg = e?.message || '';
-        if (msg.includes('Project ID') || msg.includes('WALLETCONNECT')) {
-          showToast('WalletConnect Project ID missing. Set VITE_WALLETCONNECT_PROJECT_ID.');
-        } else if (msg.includes('Failed to fetch') || msg.includes('Cannot find module') || msg.includes('@walletconnect')) {
-          showToast('WalletConnect package missing or network blocked. Install @walletconnect/ethereum-provider.');
-        } else if (msg.includes('User rejected') || msg.includes('denied') || msg.includes('cancelled')) {
-          showToast('Connection cancelled');
-        } else {
-          showToast(msg.slice(0, 90) || 'WalletConnect failed');
-        }
+        showToast(String(e?.message || 'Wallet connection failed').slice(0, 95));
       }
     } catch (e) {
-      showToast(e?.message || 'Connection failed');
+      showToast(String(e?.message || 'Connection failed').slice(0, 95));
     } finally {
       setWalletConnecting(false);
     }
