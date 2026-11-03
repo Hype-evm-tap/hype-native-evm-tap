@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { TonConnectUI } from '@tonconnect/ui';
 
 const tg = window.Telegram?.WebApp;
 if (tg) {
@@ -1493,6 +1492,32 @@ showToast(data.error || 'Already checked in today');
       setWalletConnecting(true);
       let ui = tonConnectUIRef.current;
       if (!ui) {
+        // Load the official browser bundle outside Vite's module graph.
+        // This avoids Solid/Vite interop errors such as "src is not a function".
+        if (!window.TON_CONNECT_UI?.TonConnectUI) {
+          await new Promise((resolve, reject) => {
+            const existing = document.querySelector('script[data-tonconnect-ui]');
+            const script = existing || document.createElement('script');
+            const onLoad = () => window.TON_CONNECT_UI?.TonConnectUI
+              ? resolve()
+              : reject(new Error('TON Connect UI bundle loaded but API is unavailable'));
+            const onError = () => reject(new Error('Could not load TON Connect UI. Check your connection and retry.'));
+            if (existing) {
+              if (window.TON_CONNECT_UI?.TonConnectUI) return resolve();
+              script.addEventListener('load', onLoad, { once: true });
+              script.addEventListener('error', onError, { once: true });
+            } else {
+              script.src = 'https://unpkg.com/@tonconnect/ui@5.0.2/dist/tonconnect-ui.min.js';
+              script.async = true;
+              script.dataset.tonconnectUi = 'true';
+              script.addEventListener('load', onLoad, { once: true });
+              script.addEventListener('error', onError, { once: true });
+              document.head.appendChild(script);
+            }
+          });
+        }
+        const TonConnectUI = window.TON_CONNECT_UI?.TonConnectUI;
+        if (typeof TonConnectUI !== 'function') throw new Error('TON Connect UI is unavailable. Please retry.');
         ui = new TonConnectUI({
           manifestUrl: window.location.origin + '/tonconnect-manifest.json',
           enableAndroidBackHandler: false,
