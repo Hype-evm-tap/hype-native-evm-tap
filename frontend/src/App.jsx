@@ -1345,7 +1345,13 @@ showToast(data.error || 'Already checked in today');
       return;
     }
     if (isBoost) {
-      showToast('Channel ko boost karne ke baad Verify par tap karein.');
+      showToast('Boost apply hone ke baad verification ho rahi hai…');
+      for (let seconds = 5; seconds > 0; seconds -= 1) {
+        setTaskCountdown((s) => ({ ...s, [taskId]: seconds }));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      setTaskCountdown((s) => ({ ...s, [taskId]: 0 }));
+      await verifyTask(taskId);
       return;
     }
     for (let seconds = 5; seconds > 0; seconds -= 1) {
@@ -2346,7 +2352,7 @@ const locked = !claimed && !current;
 
           <h3 className="section-heading"><Icon name="gift" size={18} /> Tasks & Rewards</h3>
           {tasks.length === 0 && <div className="card">No tasks yet. Check back later.</div>}
-          {tasks.map((t) => {
+          {tasks.filter((t) => String(t.type || '').toLowerCase() !== 'boost' || window.Telegram?.WebApp?.initDataUnsafe?.user?.is_premium === true).map((t) => {
             const status = taskVerification[t.id] || 'not_member';
             const verified = status === 'verified' || pendingTasks.includes(t.id);
             const waiting = status === 'waiting' || status === 'checking';
@@ -3076,7 +3082,7 @@ const locked = !claimed && !current;
               <div className="card">
                 <div className="card-title">Add New Task</div>
                 <input className="input" placeholder="Title" value={newTask.title} onChange={(e) => setNewTask({ ...newTask, title: e.target.value })} />
-                <select className="input" value={newTask.type} onChange={(e) => setNewTask({ ...newTask, type: e.target.value })}>
+                <select className="input" value={newTask.type} onChange={(e) => setNewTask({ ...newTask, type: e.target.value, reward: e.target.value === 'boost' ? '0.12' : newTask.reward })}>
                   <option value="telegram">Telegram Channel</option>
                   <option value="boost">Boost Channel (Premium only)</option>
                   <option value="youtube">YouTube Visit Task</option>
