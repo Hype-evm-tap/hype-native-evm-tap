@@ -631,6 +631,15 @@ app.get('/api/deposits', async (c) => {
   for (const row of (totals.results || []) as any[]) balances[row.network] = Number(row.amount) || 0;
   return c.json({ deposits: results || [], balances, wallets: DEPOSIT_WALLETS });
 });
+app.get('/api/deposit-swaps', async (c) => {
+  const userId = c.get('tgUser').id;
+  await ensureDepositSwapTables(c.env.DB);
+  const { results } = await c.env.DB.prepare(
+    'SELECT id, from_network, from_asset, from_amount, received_hype_amount, status, source_tx_hash, swap_tx_hash, created_at, updated_at FROM deposit_swap_orders WHERE user_id = ? ORDER BY id DESC LIMIT 30'
+  ).bind(userId).all();
+  return c.json({ orders: results || [] });
+});
+
 app.post('/api/deposits/verify', async (c) => {
   try {
     const userId = c.get('tgUser').id, body = await c.req.json().catch(() => ({}));
