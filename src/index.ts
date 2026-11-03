@@ -969,7 +969,7 @@ async function checkTelegramTaskMembership(db: D1Database, env: Bindings, userId
   const task = await db.prepare('SELECT * FROM tasks WHERE id = ? AND is_active = 1').bind(taskId).first<any>();
   if (!task) return { error: 'Task not found', status: 404 };
   const taskType = String(task.type || '').toLowerCase();
-  if (taskType === 'youtube') {
+  if (taskType === 'youtube' || taskType === 'link') {
     return { task, manual: true, isMember: false };
   }
   if (taskType === 'boost') {
