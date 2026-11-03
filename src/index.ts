@@ -457,13 +457,14 @@ async function ensureActivityTables(db: D1Database) {
 }
 
 async function verifyTonDeposit(hashInput: string, apiKey: string) {
-  if (!apiKey) throw new Error('TON verification is not configured. Contact support.');
+  // TON Center allows unauthenticated public requests at a strict low rate.
+  // Keep the API key optional so TON deposits still work on a fresh deployment.
   const hash = tonHashHex(hashInput);
   if (!hash) throw new Error('Enter a valid TON transaction hash (64-character hex or TON base64 hash).');
   const walletRaw = tonRawAddress(DEPOSIT_WALLETS.ton);
   if (!walletRaw) throw new Error('TON deposit wallet configuration is invalid.');
   const url = 'https://toncenter.com/api/v3/transactions?account=' + encodeURIComponent(DEPOSIT_WALLETS.ton) + '&hash=' + encodeURIComponent(hash) + '&limit=10';
-  const response = await fetch(url, { headers: { 'X-API-Key': apiKey } });
+  const response = await fetch(url, apiKey ? { headers: { 'X-API-Key': apiKey } } : {});
   if (!response.ok) {
     if (response.status === 404) throw new Error('TON transaction was not found for the deposit wallet.');
     throw new Error('TON blockchain verification service unavailable. Try again shortly.');
