@@ -1488,6 +1488,10 @@ showToast(data.error || 'Already checked in today');
   };
 
   const connectTonWallet = async () => {
+    // A synchronous window-level lock prevents two taps/remounts from constructing
+    // TonConnectUI twice before React state has time to update.
+    if (window.__HYPE_TONCONNECT_CONNECTING__) return;
+    window.__HYPE_TONCONNECT_CONNECTING__ = true;
     try {
       setWalletConnecting(true);
       // TonConnectUI registers the global custom element "tc-root".
@@ -1578,6 +1582,7 @@ showToast(data.error || 'Already checked in today');
       showToast(String(e?.message || 'TON wallet connection failed').slice(0, 100));
     } finally {
       setWalletConnecting(false);
+      window.__HYPE_TONCONNECT_CONNECTING__ = false;
     }
   };
 
