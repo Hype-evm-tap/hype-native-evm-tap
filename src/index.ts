@@ -515,7 +515,7 @@ app.post('/api/tasks/complete', async (c) => {
 
 app.get('/api/leaderboard', async (c) => {
   const { results } = await c.env.DB.prepare(
-    'SELECT id, username, first_name, balance, total_earned, total_taps, invite_count FROM users ORDER BY total_earned DESC LIMIT 100'
+    'SELECT id, username, first_name, balance, total_earned, total_taps, invite_count FROM users ORDER BY balance DESC, total_earned DESC, id ASC LIMIT 100'
   ).all();
   return c.json({ leaderboard: results || [] });
 });
@@ -647,7 +647,7 @@ app.post('/api/admin/settings', async (c) => {
 });
 app.get('/api/admin/leaderboard', async (c) => {
   const limit = Math.max(1, Math.min(100, Number.parseInt(c.req.query('limit') || '50', 10) || 50));
-  const { results } = await c.env.DB.prepare('SELECT id, username, first_name, balance, total_earned, total_taps, invite_count, is_admin FROM users ORDER BY total_earned DESC LIMIT ?').bind(limit).all();
+  const { results } = await c.env.DB.prepare('SELECT id, username, first_name, balance, total_earned, total_taps, invite_count, is_admin FROM users ORDER BY balance DESC, total_earned DESC, id ASC LIMIT ?').bind(limit).all();
   return c.json({ leaderboard: results || [] });
 });
 app.get('/api/admin/referrals', async (c) => {
