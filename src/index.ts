@@ -627,7 +627,7 @@ app.get('/api/deposits', async (c) => {
   await ensureDepositTable(c.env.DB);
   const { results } = await c.env.DB.prepare('SELECT id, network, tx_hash, amount, token, from_address, to_address, created_at FROM crypto_deposits WHERE user_id = ? ORDER BY id DESC LIMIT 30').bind(userId).all();
   const totals = await c.env.DB.prepare('SELECT network, SUM(CAST(amount AS REAL)) AS amount FROM crypto_deposits WHERE user_id = ? GROUP BY network').bind(userId).all();
-  const balances: any = { ton: 0, bep20: 0, trc20: 0, eth: 0, usdc_eth: 0 };
+  const balances: any = { ton: 0, bep20: 0, trc20: 0, eth: 0 };
   for (const row of (totals.results || []) as any[]) balances[row.network] = Number(row.amount) || 0;
   return c.json({ deposits: results || [], balances, wallets: DEPOSIT_WALLETS });
 });
@@ -645,7 +645,7 @@ app.post('/api/deposits/verify', async (c) => {
   try {
     const userId = c.get('tgUser').id, body = await c.req.json().catch(() => ({}));
     const network = String(body.network || '').toLowerCase(), hash = String(body.tx_hash || '').trim();
-    if (!['ton', 'bep20', 'trc20', 'eth', 'usdc_eth'].includes(network)) return c.json({ error: 'Choose TON/GRAM, USDT BEP20/TRC20, ETH or USDC Ethereum.' }, 400);
+    if (!['ton', 'bep20', 'trc20', 'eth'].includes(network)) return c.json({ error: 'Only native TON, USDT BEP20, USDT TRC20, and ETH deposits are accepted.' }, 400);
     const validHash = network === 'ton' ? !!tonHashHex(hash) : (network === 'bep20' || network === 'eth' || network === 'usdc_eth') ? /^0x[a-fA-F0-9]{64}$/.test(hash) : /^[a-fA-F0-9]{64}$/.test(hash);
     if (!validHash) return c.json({ error: 'Enter a valid transaction hash.' }, 400);
     await ensureDepositTable(c.env.DB);
