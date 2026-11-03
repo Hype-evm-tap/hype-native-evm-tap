@@ -602,9 +602,12 @@ const persistWallet = async (addr, walletProvider = null) => {
       if (!challenge?.message) throw new Error(challenge?.error || 'Could not prepare sign-in message');
       const signer = walletProvider || wcProviderRef.current || window.ethereum;
       if (!signer?.request) throw new Error('Wallet session unavailable. Reconnect your wallet.');
+      // EIP-1193 personal_sign: encode the challenge as 0x-prefixed UTF-8 bytes.
+      const messageHex = '0x' + Array.from(new TextEncoder().encode(challenge.message))
+        .map((byte) => byte.toString(16).padStart(2, '0')).join('');
       const signature = await signer.request({
         method: 'personal_sign',
-        params: [challenge.message, clean],
+        params: [messageHex, clean],
       });
       const verified = await api('/api/wallet/verify', {
         method: 'POST',
