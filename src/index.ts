@@ -997,8 +997,7 @@ async function checkTelegramTaskMembership(db: D1Database, env: Bindings, userId
   const response = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/getChatMember?chat_id=${encodeURIComponent(channel)}&user_id=${userId}`);
   const result: any = await response.json();
   if (!result?.ok) return { error: 'Could not verify channel membership. The bot must be an admin in that channel.', status: 503 };
-  const member = result.result;
-  const isMember = member && (['creator', 'administrator', 'member'].includes(member.status) || (member.status === 'restricted' && member.is_member === true));
+  const member = result.result;  const isMember = member && (['creator', 'administrator', 'member'].includes(member.status) || (member.status === 'restricted' && member.is_member === true));
   return { task, isMember: !!isMember };
 }
 
