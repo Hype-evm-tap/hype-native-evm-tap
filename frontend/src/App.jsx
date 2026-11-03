@@ -2571,7 +2571,7 @@ const locked = !claimed && !current;
             </div>}
           </div>
 
-          <div className="card"
+          <div className="card">
             <div className="card-title"><Icon name="ton" size={20} title="TON" /> TON Wallet Ownership</div>
             {tonWallet?.address_friendly ? (
               <div className="wallet-connected-box">
