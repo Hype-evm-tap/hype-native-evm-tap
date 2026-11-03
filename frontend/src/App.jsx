@@ -2467,7 +2467,25 @@ const locked = !claimed && !current;
             </div>
             <div style={{fontSize:'0.7rem',color:'#ffaa66',marginTop:10}}>Conversion is currently operator-settled, not an instant on-chain swap. Your HYPE balance updates after settlement.</div>
           </div>
-                    <div className="card">
+                    <section className="ton-swap-connect">
+            <div className="ton-swap-top">
+              <div className="ton-swap-mark"><Icon name="ton" size={30}/></div>
+              <div className="ton-swap-title"><strong>TON Wallet</strong><span>Connect your wallet to verify native TON deposits</span></div>
+              <span className={tonWallet?.address_friendly ? "ton-swap-status is-connected" : "ton-swap-status"}>{tonWallet?.address_friendly ? "CONNECTED" : "NOT CONNECTED"}</span>
+            </div>
+            {tonWallet?.address_friendly ? (
+              <div className="ton-swap-connected">
+                <div className="ton-swap-address">{shortAddr(tonWallet.address_friendly)}</div>
+                <button className="ton-swap-button secondary" onClick={disconnectTonWallet}>Disconnect</button>
+              </div>
+            ) : (
+              <button className="ton-swap-button" onClick={connectTonWallet} disabled={walletConnecting}>
+                <Icon name="wallet" size={18}/>{walletConnecting ? 'Connecting…' : 'Connect TON Wallet'}
+              </button>
+            )}
+            <div className="ton-swap-note">Connect once with Tonkeeper or another TON Connect wallet. The sender address must match this verified wallet when you submit a TON deposit.</div>
+          </section>
+          <div className="card">
             <div className="card-title"><Icon name="coins" size={16} /> Deposit</div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
               {['eth', 'bep20', 'trc20', 'ton'].map((network) => (
@@ -2495,7 +2513,7 @@ const locked = !claimed && !current;
               Verified balance: <Icon name={depositNetwork === 'ton' ? 'ton' : depositNetwork === 'bep20' || depositNetwork === 'trc20' ? 'usdt' : 'eth'} size={20} title={depositNetwork === 'usdc_eth' ? 'USDC' : 'ETH'} /> {Number(depositData.balances?.[depositNetwork] || 0).toFixed(depositNetwork === 'eth' || depositNetwork === 'ton' ? 9 : 6)} {depositNetwork === 'ton' ? 'TON' : depositNetwork === 'bep20' || depositNetwork === 'trc20' ? 'USDT' : 'ETH'}
             </div>
             <div style={{ fontSize: '0.72rem', color: '#888', marginTop: 5 }}>
-              {depositNetwork === 'ton' ? 'TON sender must match your TON Connect signature-verified wallet. Connect your TON wallet from the Wallet tab before submitting a deposit.' : depositNetwork === 'eth' ? 'Send native ETH on Ethereum Mainnet. The sender must match your signature-verified EVM wallet. Each transaction hash can be credited once.' : 'Send USDT only on the selected BNB Smart Chain or TRON network. Sender must match your linked wallet. Each transaction hash can be credited once.'}
+              {depositNetwork === 'ton' ? 'TON sender must match your TON Connect signature-verified wallet. Connect your TON wallet above before submitting a deposit.' : depositNetwork === 'eth' ? 'Send native ETH on Ethereum Mainnet. The sender must match your signature-verified EVM wallet. Each transaction hash can be credited once.' : 'Send USDT only on the selected BNB Smart Chain or TRON network. Sender must match your linked wallet. Each transaction hash can be credited once.'}
             </div>
           </div>
 
@@ -2569,10 +2587,6 @@ const locked = !claimed && !current;
                 <input className="input" style={{marginTop:10}} placeholder="Paste wallet address" value={wdWallet} onChange={(e)=>setWdWallet(e.target.value.trim())}/>
                 <button className="btn btn-secondary" style={{width:'100%',marginTop:8}} onClick={()=>persistWallet(wdWallet)}>Save Address</button></>
             )}
-            <div className="hw-ton-connect">
-              <div><Icon name="ton" size={20}/> TON ownership {tonWallet?.address_friendly ? 'verified' : 'not connected'}</div>
-              {tonWallet?.address_friendly ? <><small>{shortAddr(tonWallet.address_friendly)}</small><button className="btn btn-secondary" onClick={disconnectTonWallet}>Disconnect TON</button></> : <button className="btn btn-secondary" onClick={connectTonWallet} disabled={walletConnecting}>Connect TON Wallet</button>}
-            </div>
           </section>
 
           <section className="hw-withdraw-card" id="hw-withdraw">
