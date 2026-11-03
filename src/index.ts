@@ -968,6 +968,17 @@ async function ensureAdTables(db: D1Database) {
     credited_at INTEGER
   )`).run();
 }
+app.get('/api/ads/usage', async (c) => {
+  const u = c.get('tgUser');
+  await ensureAdTables(c.env.DB);
+  const since = nowSec() - 86400;
+  const row = await c.env.DB.prepare(
+    'SELECT COUNT(*) AS total, MIN(created_at) AS oldest FROM monetag_ad_events WHERE user_id = ? AND created_at > ?'
+  ).bind(u.id, since).first<any>();
+  const used = Number(row?.total) || 0;
+  const retryAfter = used >= 10 ? Math.max(0, (Number(row?.oldest) || nowSec()) + 86400 - nowSec()) : 0;
+  return c.json({ daily_limit: 10, ads_used: used, ads_remaining: Math.max(0, 10 - used), retry_after: retryAfter });
+});
 app.post('/api/ads/start', async (c) => {
   const cfg = await getConfig(c.env.DB, c.env);
   if (!cfg.ads_enabled) return c.json({ error: 'Ads are currently disabled.' }, 403);
