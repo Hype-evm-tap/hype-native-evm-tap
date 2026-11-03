@@ -639,8 +639,9 @@ const persistWallet = async (addr, walletProvider = null) => {
       showToast('Wallet ownership verified and connected');
       return true;
     } catch (e) {
-      showToast(String(e?.message || 'Wallet sign-in failed').slice(0, 95));
-      return false;
+      // Let the connection flow display the real signing/API error instead of
+      // replacing it with a generic "connect failed" message.
+      throw e;
     }
   };
 
@@ -705,11 +706,16 @@ const persistWallet = async (addr, walletProvider = null) => {
     // WalletConnect deep link so the exact pending session reaches the wallet.
     const provider = await EthereumProvider.init({
       projectId,
-      // HYPE uses HyperEVM mainnet (chain ID 999). Request it as the
-      // required WalletConnect chain so Trust Wallet does not open Ethereum.
-      chains: [999],
-      optionalChains: [1, 56],
-      showQrModal: !inTelegram,
+      // Wallet ownership signing is chain-independent. Use Ethereum Mainnet
+      // as the broadly supported required namespace so Trust Wallet and other
+      // WalletConnect apps can establish a session; HyperEVM remains optional
+      // and is selected by the user when they perform a HYPE swap.
+      chains: [1],
+      optionalChains: [999, 56],
+      // Keep the WalletConnect explorer modal enabled inside Telegram too.
+      // It lists all compatible wallet apps (including Trust Wallet) rather
+      // than hard-routing every user to Trust Wallet.
+      showQrModal: true,
       // Only account access and personal message signing are needed.
       // No transaction signing or transfer permissions are requested.
       methods: ['personal_sign', 'eth_accounts', 'eth_requestAccounts', 'eth_sendTransaction', 'eth_call', 'eth_getTransactionReceipt', 'eth_chainId'],
@@ -735,18 +741,6 @@ const persistWallet = async (addr, walletProvider = null) => {
     });
 
     wcProviderRef.current = provider;
-
-    if (inTelegram) {
-      provider.on('display_uri', (uri) => {
-        const trustLink = 'https://link.trustwallet.com/wc?uri=' + encodeURIComponent(uri);
-        try {
-          // Telegram's openLink hands the universal link to Android's app resolver.
-          window.Telegram.WebApp.openLink(trustLink);
-        } catch (_) {
-          window.location.href = trustLink;
-        }
-      });
-    }
 
     provider.on('accountsChanged', (accounts) => {
       if (accounts?.[0]) { setConnectedWallet(''); setWdWallet(''); }
@@ -788,7 +782,7 @@ const persistWallet = async (addr, walletProvider = null) => {
       const addr = await connectWalletConnect();
       if (!addr) throw new Error('WalletConnect returned no account');
       const saved = await persistWallet(addr, wcProviderRef.current);
-      if (!saved) throw new Error('Wallet signature was not verified');
+      if (!saved) throw new Error('Wallet ownership verification failed. Please try again.');
       swapProviderRef.current = wcProviderRef.current;
       return true;
     };
@@ -814,7 +808,7 @@ const persistWallet = async (addr, walletProvider = null) => {
           } else if (msg.includes('User rejected') || msg.includes('denied') || msg.includes('cancelled')) {
             showToast('Wallet connection cancelled');
           } else {
-            showToast(msg.slice(0, 95) || 'WalletConnect failed');
+            showToast(msg.slice(0, 150) || 'WalletConnect failed');
           }
           return;
         }
@@ -831,10 +825,10 @@ const persistWallet = async (addr, walletProvider = null) => {
         await connectWithWalletConnect();
       } catch (e) {
         console.warn('WalletConnect failed:', e);
-        showToast(String(e?.message || 'Wallet connection failed').slice(0, 95));
+        showToast(String(e?.message || 'Wallet connection failed').slice(0, 150));
       }
     } catch (e) {
-      showToast(String(e?.message || 'Connection failed').slice(0, 95));
+      showToast(String(e?.message || 'Connection failed').slice(0, 150));
     } finally {
       setWalletConnecting(false);
     }
