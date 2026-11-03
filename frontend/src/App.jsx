@@ -2541,27 +2541,524 @@ const locked = !claimed && !current;
           </div>
 
           <div className="card">
-            <div className="card-title"><img src="/hype-coin.svg" alt="HYPE" style={{width:24,height:24,objectFit:'contain'}} /> HyperEVM Swap · Native HYPE</div>
-            <div style={{fontSize:'0.78rem',color:'#a0ffc0',marginBottom:10}}>Swap tokens you already hold in your connected wallet on HyperEVM (Chain ID 999) into native HYPE. This is a swap screen — it does not accept deposits.</div>
-            <div style={{fontSize:'0.76rem',color:'#ffd27a',background:'#211a0c',border:'1px solid #59451d',borderRadius:9,padding:10,marginBottom:12}}>
-              <strong>Where do I deposit USDT / USDC / ETH?</strong><br/>
-              Use the separate Deposit section and its displayed deposit address. Do not send funds to the token shown here. Funds deposited on Ethereum or another network will not automatically appear in this HyperEVM swap. To swap here, the selected token must already be in your connected wallet on HyperEVM.
+            <div className="card-title"><img src="/hype-coin.svg" alt="HYPE" style={{width:24,height:24,objectFit:'contain'}} /> HyperEVM Swap</div>
+            <div style={{fontSize:'0.78rem',color:'#a0ffc0',marginBottom:12,lineHeight:1.5}}>Convert a token in your connected HyperEVM wallet into native HYPE. The swap uses a live route quote; nothing is transferred until you approve the transaction in your wallet.</div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:'0.72rem',color:'#9aa',marginBottom:8}}>
+              <span>NETWORK</span><strong style={{color:'#00d98b'}}>HyperEVM · Chain ID 999</strong>
             </div>
-            <label style={{display:'block',fontSize:'0.78rem',color:'#9aa',marginBottom:5}}>Token to swap (from your HyperEVM wallet)</label>
-            <select className="input" value={swapTokenAddress} onChange={e=>{setSwapTokenAddress(e.target.value);setSwapQuote(null);}} disabled={swapBusy || !swapTokens.length}>
-              {swapTokens.map(token=><option key={token.address} value={token.address}>{token.symbol} · {token.name || token.address.slice(0,8)}</option>)}
-            </select>
-            <input className="input" style={{marginTop:8}} type="number" min="0" step="any" inputMode="decimal" placeholder="Enter amount of selected token" value={swapAmount} onChange={e=>{setSwapAmount(e.target.value);setSwapQuote(null);}} disabled={swapBusy}/>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',margin:'12px 0 8px'}}>
-              <span style={{fontSize:'0.78rem',color:'#9aa'}}>You receive</span>
-              <strong style={{color:'#00ff88'}}>{swapQuote?.estimate?.toAmount ? unitsToDecimal(swapQuote.estimate.toAmount,Number(swapQuote.action?.toToken?.decimals || 18),8)+' HYPE' : 'Native HYPE'}</strong>
+            <div style={{background:'#111b16',border:'1px solid #244a36',borderRadius:12,padding:12,marginBottom:12}}>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:'0.75rem',color:'#aab',marginBottom:7}}><span>You pay</span><span>From wallet</span></div>
+              <select className="input" value={swapTokenAddress} onChange={e=>{setSwapTokenAddress(e.target.value);setSwapQuote(null);}} disabled={swapBusy || !swapTokens.length} style={{marginBottom:8}}>
+                {swapTokens.map(token=><option key={token.address} value={token.address}>{token.symbol} · {token.name || token.address.slice(0,8)}</option>)}
+              </select>
+              <input className="input" style={{marginBottom:0,fontSize:'1.1rem',fontWeight:700}} type="number" min="0" step="any" inputMode="decimal" placeholder="0.00" value={swapAmount} onChange={e=>{setSwapAmount(e.target.value);setSwapQuote(null);}} disabled={swapBusy}/>
             </div>
-            {swapQuote?.estimate && <div style={{fontSize:'0.72rem',color:'#9aa',marginBottom:10}}>Estimated minimum: {unitsToDecimal(swapQuote.estimate.toAmountMin || swapQuote.estimate.toAmount,Number(swapQuote.action?.toToken?.decimals || 18),8)} HYPE · {swapQuote.toolDetails?.name || swapQuote.tool || 'LI.FI'}</div>}
-            <button className="btn btn-secondary" style={{width:'100%'}} onClick={requestSwapQuote} disabled={swapBusy || !connectedWallet || !swapTokenAddress || !swapAmount || !swapTokens.length}>{swapBusy && !swapQuote ? 'Getting quote…' : 'Get Swap Quote'}</button>
-            {swapQuote && <button className="btn btn-primary" style={{width:'100%',marginTop:8}} onClick={executeNativeHypeSwap} disabled={swapBusy}>{swapBusy ? 'Processing…' : 'Confirm & Swap to Native HYPE'}</button>}
+            <div style={{textAlign:'center',color:'#00d98b',fontSize:'1.1rem',margin:'-4px 0 8px'}}>↓</div>
+            <div style={{background:'#111b16',border:'1px solid #244a36',borderRadius:12,padding:12,marginBottom:12}}>
+              <div style={{fontSize:'0.75rem',color:'#aab',marginBottom:7}}>You receive</div>
+              <div style={{fontSize:'1.12rem',fontWeight:800,color:'#00ff88'}}>{swapQuote?.estimate?.toAmount ? unitsToDecimal(swapQuote.estimate.toAmount,Number(swapQuote.action?.toToken?.decimals || 18),8)+' HYPE' : 'Native HYPE'}</div>
+              <div style={{fontSize:'0.7rem',color:'#778',marginTop:5}}>Estimated output · final amount may change with market conditions</div>
+            </div>
+            <button className="btn btn-secondary" style={{width:'100%'}} onClick={requestSwapQuote} disabled={swapBusy || !connectedWallet || !swapTokenAddress || !swapAmount || !swapTokens.length}>{swapBusy && !swapQuote ? 'Finding best route…' : 'Get live swap quote'}</button>
+            {swapQuote?.estimate && <div style={{marginTop:12,border:'1px solid #294536',borderRadius:11,padding:11}}>
+              <div style={{fontWeight:800,fontSize:'0.82rem',marginBottom:9,color:'#d8ffe9'}}>Quote details</div>
+              <div style={{display:'flex',justifyContent:'space-between',gap:8,fontSize:'0.73rem',marginBottom:7}}><span style={{color:'#9aa'}}>Minimum received</span><strong>{unitsToDecimal(swapQuote.estimate.toAmountMin || swapQuote.estimate.toAmount,Number(swapQuote.action?.toToken?.decimals || 18),8)} HYPE</strong></div>
+              <div style={{display:'flex',justifyContent:'space-between',gap:8,fontSize:'0.73rem',marginBottom:7}}><span style={{color:'#9aa'}}>Route provider</span><strong>{swapQuote.toolDetails?.name || swapQuote.tool || 'LI.FI'}</strong></div>
+              {swapQuote.estimate.gasCosts?.map((fee,i)=><div key={i} style={{display:'flex',justifyContent:'space-between',gap:8,fontSize:'0.73rem',marginBottom:7}}><span style={{color:'#9aa'}}>Estimated network fee</span><strong>{fee.amountUSD ? '
+
+          <div className="card">
+            <div className="card-title"><Icon name="ton" size={20} title="TON" /> TON Wallet Ownership</div>
+            {tonWallet?.address_friendly ? (
+              <div className="wallet-connected-box">
+                <div className="wc-status"><span className="wc-dot" /> TON ownership verified</div>
+                <div className="wc-addr">{tonWallet.address_friendly}</div>
+                <button className="btn btn-secondary" style={{ width: '100%', marginTop: 10 }} onClick={disconnectTonWallet}>Disconnect TON Wallet</button>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: '0.8rem', color: '#a0ffc0', marginBottom: 10 }}>Connect TON wallet and approve a TON Connect ownership proof. No transaction or token transfer is requested.</div>
+                <button className="btn btn-primary" style={{ width: '100%' }} onClick={connectTonWallet} disabled={walletConnecting}>
+                  <Icon name="ton" size={18} /> {walletConnecting ? 'Connecting…' : 'Connect TON Wallet'}
+                </button>
+              </>
+            )}
+          </div>
+
+          <div className="card">
+            <div className="card-title"><Icon name="coins" size={16} /> Deposit</div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+              {['ton', 'bep20', 'trc20', 'eth', 'usdc_eth'].map((network) => (
+                <button key={network} className={`admin-tab ${depositNetwork === network ? 'active' : ''}`} onClick={() => setDepositNetwork(network)} title={network === 'ton' ? 'TON / GRAM' : network === 'bep20' ? 'USDT BNB Smart Chain' : network === 'trc20' ? 'USDT TRON' : network === 'eth' ? 'ETH Ethereum' : 'USDC Ethereum ERC20'} aria-label={network === 'ton' ? 'TON / GRAM' : network === 'bep20' ? 'USDT BEP20' : network === 'trc20' ? 'USDT TRC20' : network === 'eth' ? 'ETH Ethereum' : 'USDC Ethereum ERC20'}>
+                  <Icon name={network === 'ton' ? 'ton' : network === 'eth' ? 'eth' : 'usdt'} size={22} />
+                  <span style={{ fontSize: '0.72rem', marginLeft: 4 }}>{network === 'ton' ? 'TON' : network === 'bep20' ? 'BEP20' : network === 'trc20' ? 'TRC20' : network === 'eth' ? 'ETH' : 'USDC'}</span>
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: '0.8rem', color: '#a0ffc0', marginBottom: 6 }}>
+              {depositNetwork === 'ton' ? <>Send native <Icon name="ton" size={17} title="TON" /> only (TON / GRAM uses this same address). Jettons are not accepted.</> : depositNetwork === 'eth' ? <>Send native <Icon name="eth" size={17} title="ETH" /> only on Ethereum Mainnet to this address:</> : depositNetwork === 'usdc_eth' ? <>Send only <Icon name="usdt" size={17} title="USDC" /> (USDC ERC20) on Ethereum Mainnet to this address:</> : <>Send only <Icon name="usdt" size={17} title="USDT" /> on {depositNetwork.toUpperCase()} network to this address:</>}
+            </div>
+            <div style={{ padding: 10, borderRadius: 8, background: 'rgba(0,255,136,0.07)', wordBreak: 'break-all', fontSize: '0.78rem' }}>
+              {depositNetwork === 'ton' ? 'UQBtBjwUwBXKsJuRr1UFdba_B1Rh8gXo0uFBzuT9-mVC17yl' : depositNetwork === 'bep20' ? '0xaaa40bd792bd26c1e5f6481b25ac1f8d4cf62f4a' : depositNetwork === 'trc20' ? 'THcEQMCe1eyfajz7TyFUe8EmW2AQuCc1do' : '0x87Ad7Fe8Be9eeEa2E388F80f4C5fcF450E037463'}
+            </div>
+            <button className="btn btn-secondary" style={{ width: '100%', marginTop: 8 }} onClick={() => {
+              const address = depositNetwork === 'ton' ? 'UQBtBjwUwBXKsJuRr1UFdba_B1Rh8gXo0uFBzuT9-mVC17yl' : depositNetwork === 'bep20' ? '0xaaa40bd792bd26c1e5f6481b25ac1f8d4cf62f4a' : depositNetwork === 'trc20' ? 'THcEQMCe1eyfajz7TyFUe8EmW2AQuCc1do' : '0x87Ad7Fe8Be9eeEa2E388F80f4C5fcF450E037463';
+              navigator.clipboard?.writeText(address).then(() => showToast('Deposit address copied')).catch(() => showToast('Copy address manually'));
+            }}>Copy Deposit Address</button>
+            <input className="input" style={{ marginTop: 12 }} placeholder="Paste transaction hash" value={depositHash} onChange={(e) => setDepositHash(e.target.value.trim())} />
+            <button className="btn btn-primary" style={{ width: '100%' }} onClick={verifyDeposit} disabled={depositBusy}>
+              {depositBusy ? 'Checking blockchain…' : 'Verify Deposit'}
+            </button>
+            <div style={{ marginTop: 12, fontSize: '0.85rem', color: '#a0ffc0' }}>
+              Verified balance: <Icon name={depositNetwork === 'ton' ? 'ton' : depositNetwork === 'eth' ? 'eth' : 'usdt'} size={20} title={depositNetwork === 'ton' ? 'TON' : depositNetwork === 'eth' ? 'ETH' : depositNetwork === 'usdc_eth' ? 'USDC' : 'USDT'} /> {Number(depositData.balances?.[depositNetwork] || 0).toFixed(depositNetwork === 'ton' || depositNetwork === 'eth' ? 9 : 6)} {depositNetwork === 'usdc_eth' ? 'USDC' : depositNetwork === 'eth' ? 'ETH' : depositNetwork === 'ton' ? 'TON' : 'USDT'}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: '#888', marginTop: 5 }}>
+              {depositNetwork === 'ton' ? 'TON sender must match your TON Connect signature-verified wallet. Connect your TON wallet above before submitting a deposit.' : 'Ethereum deposits require ETH or native USDC ERC20 on Ethereum Mainnet. The sender must match your signature-verified EVM wallet. Each transaction hash can be credited once.'}
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-title"><img src="/hype-coin.svg" alt="HYPE" style={{width:26,height:26,objectFit:'contain'}} /> Withdraw</div>
+            <div style={{ marginBottom: 10, fontSize: '0.9rem' }}>
+              <img src="/hype-coin.svg" alt="HYPE" style={{width:24,height:24,objectFit:'contain',verticalAlign:'middle'}} /> <strong style={{ color: '#00ff88' }}>{formatNum(user?.balance, 10)}</strong>
+            </div>
+            <div style={{ marginBottom: 10, fontSize: '0.85rem', color: '#ffaa00' }}>
+              Minimum withdraw is {config?.min_withdraw || 1} HYPE
+            </div>
+            <div style={{ marginBottom: 12, fontSize: '0.85rem', color: '#00ff88' }}>
+              <Icon name="ban" size={14} /> We don’t charge any fees
+            </div>
+            <input
+              className="input"
+              placeholder="Amount (HYPE)"
+              type="number"
+              value={wdAmount}
+              onChange={(e) => setWdAmount(e.target.value)}
+            />
+            {connectedWallet && (
+              <div style={{ fontSize: '0.8rem', color: '#a0ffc0', marginBottom: 10 }}>
+                To: {shortAddr(connectedWallet)}
+              </div>
+            )}
+            <button
+              className="btn btn-primary"
+              style={{ width: '100%' }}
+              onClick={requestWithdraw}
+              disabled={!connectedWallet}
+            >
+              {connectedWallet ? 'Request Withdrawal' : 'Connect wallet first'}
+            </button>
+          </div>
+
+          <div className="card">
+            <div className="card-title"><Icon name="chart" size={16} /> Transaction History</div>
+            {history.length === 0 && <div style={{ color: '#777', fontSize: '0.85rem' }}>No deposit, swap or withdrawal activity yet.</div>}
+            {history.map((item) => {
+              const name = [item.first_name, item.last_name].filter(Boolean).join(' ') || (item.username ? '@' + item.username : 'User #' + item.user_id);
+              const assetIcon = String(item.asset || '').toUpperCase() === 'TON' ? 'ton' : String(item.asset || '').toUpperCase().includes('USDT') ? 'usdt' : 'hype';
+              const stamp = Number(item.created_at) * 1000;
+              return (
+                <div key={item.type + '-' + item.id} style={{ padding: '11px 0', borderBottom: '1px solid rgba(0,255,136,0.12)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
+                      {assetIcon === 'hype' ? <img src="/hype-coin.svg" alt="HYPE" style={{width:24,height:24,objectFit:'contain'}} /> : <Icon name={assetIcon} size={22} title={item.asset} />}
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: '0.86rem', fontWeight: 800 }}>{item.type === 'deposit' ? 'Deposit' : item.type === 'withdrawal' ? 'Withdrawal' : 'Swap'}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#9aa' }}>{name} {item.username ? '· @' + item.username : ''}</div>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontWeight: 800, color: item.type === 'deposit' ? '#00ff88' : '#e0ffe8' }}>
+                        {item.type === 'deposit' ? '+' : item.type === 'withdrawal' ? '−' : ''}{formatNum(item.amount, item.asset === 'TON' ? 9 : 10)} {item.asset}
+                      </div>
+                      {item.type === 'swap' && <div style={{ fontSize: '0.72rem', color: '#9aa' }}>→ {formatNum(item.to_amount, 10)} {item.to_asset}</div>}
+                      <div style={{ fontSize: '0.7rem', color: item.status === 'approved' || item.status === 'completed' ? '#00ff88' : item.status === 'rejected' ? '#ff6677' : '#ffaa00' }}>{item.status}</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#777', marginTop: 5 }}>{item.network} · {Number.isFinite(stamp) && stamp > 0 ? new Date(stamp).toLocaleString() : ''}</div>
+                  {item.tx_hash && <div style={{ fontSize: '0.68rem', color: '#667', overflowWrap: 'anywhere' }}>TX: {item.tx_hash}</div>}
+                  {item.type === 'withdrawal' && item.to_address && <div style={{ fontSize: '0.68rem', color: '#667', overflowWrap: 'anywhere' }}>To: {item.to_address}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ADMIN PANEL */}
+      {tab === 'admin' && user?.is_admin && (
+        <div className="page">
+          <h3 style={{ color: '#f0d878', marginBottom: 12 }}><Icon name="settings" size={16} /> Admin Panel</h3>
+          <div className="admin-tabs">
+            {['stats', 'activity', 'settings', 'users', 'referrals', 'withdrawals', 'tasks', 'broadcast'].map((t) => (
+              <button
+                key={t}
+                className={`admin-tab ${adminTab === t ? 'active' : ''}`}
+                onClick={() => setAdminTab(t)}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+
+          {adminTab === 'activity' && (
+            <div className="card">
+              <div className="card-title"><Icon name="chart" size={16} /> All User Transactions</div>
+              {adminHistory.length === 0 && <div style={{ color: '#777' }}>No transactions recorded yet.</div>}
+              {adminHistory.map((item) => {
+                const name = [item.first_name, item.last_name].filter(Boolean).join(' ') || (item.username ? '@' + item.username : 'User #' + item.user_id);
+                const icon = String(item.asset || '').toUpperCase() === 'TON' ? 'ton' : String(item.asset || '').toUpperCase().includes('USDT') ? 'usdt' : 'hype';
+                return <div key={item.type + '-' + item.id} style={{ padding: '10px 0', borderBottom: '1px solid rgba(0,255,136,0.12)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><Icon name={icon} size={21} /><div><div>{name}</div><div style={{ fontSize: '0.7rem', color: '#888' }}>@{item.username || item.user_id} · {item.type}</div></div></div>
+                    <div style={{ textAlign: 'right' }}><strong>{formatNum(item.amount, 10)} {item.asset}</strong>{item.type === 'swap' && <div style={{ fontSize: '0.72rem' }}>→ {formatNum(item.to_amount, 10)} {item.to_asset}</div>}<div style={{ color: item.status === 'completed' || item.status === 'approved' ? '#00ff88' : item.status === 'rejected' ? '#ff6677' : '#ffaa00', fontSize: '0.72rem' }}>{item.status}</div></div>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#777', marginTop: 4 }}>{item.network} · {new Date(Number(item.created_at) * 1000).toLocaleString()}</div>
+                  {item.tx_hash && <div style={{ fontSize: '0.68rem', color: '#667', overflowWrap: 'anywhere' }}>TX: {item.tx_hash}</div>}
+                </div>;
+              })}
+            </div>
+          )}
+
+          {adminTab === 'stats' && adminStats && (
+            <div className="card">
+              <div>Total Users: <strong>{adminStats.total_users}</strong></div>
+              <div>Pending Withdrawals: <strong>{adminStats.pending_withdrawals}</strong></div>
+              <div>Total Balance in App: <strong>{formatNum(adminStats.total_balance)}</strong></div>
+              <div>Total Earned: <strong>{formatNum(adminStats.total_earned)}</strong></div>
+            </div>
+          )}
+
+{/* SETTINGS - manage tap reward, energy, etc. */}
+          {adminTab === 'settings' && (
+            <div className="card">
+              <div className="card-title"><Icon name="settings" size={16} /> Live App Controls</div>
+              <div style={{ fontSize: '0.78rem', color: '#888', marginBottom: 12 }}>
+                Yahan change karoge → turant pure app par apply hoga (naye taps / naye referrals par)
+              </div>
+
+              <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}><Icon name="flame" size={14} /> Per Tap Points (HYPE)</label>
+              <input className="input" type="number" step="any" value={settingsForm.tap_reward}
+                onChange={(e) => setSettingsForm({ ...settingsForm, tap_reward: e.target.value })}
+                placeholder="e.g. 0.0000000695" />
+
+              <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}><Icon name="users" size={14} /> Per Referral Points (HYPE)</label>
+              <input className="input" type="number" step="any" value={settingsForm.referral_reward}
+                onChange={(e) => setSettingsForm({ ...settingsForm, referral_reward: e.target.value })}
+                placeholder="e.g. 0.00008526" />
+
+              <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}><Icon name="coins" size={14} /> Min Withdraw (HYPE)</label>
+              <input className="input" type="number" step="any" value={settingsForm.min_withdraw}
+                onChange={(e) => setSettingsForm({ ...settingsForm, min_withdraw: e.target.value })}
+                placeholder="e.g. 2" />
+
+              <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}><Icon name="zap" size={14} /> Max Energy</label>
+              <input className="input" type="number" value={settingsForm.energy_max}
+                onChange={(e) => setSettingsForm({ ...settingsForm, energy_max: e.target.value })}
+                placeholder="e.g. 1000" />
+
+              <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}><Icon name="clock" size={14} /> Energy Cooldown (seconds)</label>
+              <input className="input" type="number" value={settingsForm.energy_cooldown}
+                onChange={(e) => setSettingsForm({ ...settingsForm, energy_cooldown: e.target.value })}
+                placeholder="e.g. 3600" />
+
+              <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}><Icon name="calendar" size={14} /> Default Daily Check-in (fallback)</label>
+              <input className="input" type="number" step="any" value={settingsForm.daily_checkin_reward}
+                onChange={(e) => setSettingsForm({ ...settingsForm, daily_checkin_reward: e.target.value })}
+                placeholder="e.g. 0.001" />
+
+              <div style={{ marginTop: 10, marginBottom: 6, fontWeight: 800, color: '#f0d878', fontSize: '0.85rem' }}>
+                7-Day Streak Rewards (HYPE)
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {[1,2,3,4,5,6,7].map((d) => (
+                  <div key={d}>
+                    <label style={{ fontSize: '0.72rem', color: '#a0ffc0' }}>Day {d}</label>
+                    <input className="input" type="number" step="any" value={settingsForm[`day${d}`]}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, [`day${d}`]: e.target.value })}
+                      placeholder={`Day ${d} reward`} />
+                  </div>
+                ))}
+              </div>
+              <button className="btn btn-primary" style={{ width: '100%', marginTop: 8 }} onClick={saveSettings}>
+                <Icon name="save" size={14} /> Save & Apply Live
+              </button>
+              {adminSettings && (
+                <div style={{ marginTop: 12, fontSize: '0.8rem', color: 'rgba(0,255,136,0.7)', lineHeight: 1.5 }}>
+
+<strong>Live values:</strong><br />
+                  Tap: {formatNum(adminSettings.tap_reward, 12)} • Referral: {formatNum(adminSettings.referral_reward, 12)}<br />
+                  Min WD: {formatNum(adminSettings.min_withdraw, 8)} • Energy: {adminSettings.energy_max} / {adminSettings.energy_cooldown}s<br />
+                  Day 1–7 rewards: {formatNum(checkinRewards[0], 12)}, {formatNum(checkinRewards[1], 12)}, {formatNum(checkinRewards[2], 12)}, {formatNum(checkinRewards[3], 12)}, {formatNum(checkinRewards[4], 12)}, {formatNum(checkinRewards[5], 12)}, {formatNum(checkinRewards[6], 12)} HYPE
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* USERS / LEADERBOARD manage */}
+          {adminTab === 'users' && (
+            <>
+              <div className="card">
+                <div className="card-title"><Icon name="user" size={16} /> Edit User Points (Leaderboard control)</div>
+                <div style={{ fontSize: '0.75rem', color: '#888', marginBottom: 8 }}>
+                  Balance / Total Earned badalne se leaderboard rank turant change hoga
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input className="input" style={{ marginBottom: 0 }} placeholder="User Telegram ID" value={editUserId}
+                    onChange={(e) => setEditUserId(e.target.value)} />
+                  <button className="btn btn-outline" onClick={() => loadUserDetails(editUserId)}>Load</button>
+                </div>
+                {editUserId && editUserData.balance !== '' && (
+                  <div style={{ marginTop: 12 }}>
+                    <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}>Balance</label>
+                    <input className="input" type="number" step="any" value={editUserData.balance}
+                      onChange={(e) => setEditUserData({ ...editUserData, balance: e.target.value })} />
+                    <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}>Total Earned</label>
+                    <input className="input" type="number" step="any" value={editUserData.total_earned}
+                      onChange={(e) => setEditUserData({ ...editUserData, total_earned: e.target.value })} />
+                    <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}>Total Taps</label>
+                    <input className="input" type="number" value={editUserData.total_taps}
+                      onChange={(e) => setEditUserData({ ...editUserData, total_taps: e.target.value })} />
+                    <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}>Invite Count</label>
+                    <input className="input" type="number" value={editUserData.invite_count}
+                      onChange={(e) => setEditUserData({ ...editUserData, invite_count: e.target.value })} />
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '8px 0' }}>
+                      <input type="checkbox" checked={editUserData.is_admin}
+                        onChange={(e) => setEditUserData({ ...editUserData, is_admin: e.target.checked })} />
+                      Is Admin
+                    </label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button className="btn btn-primary" style={{ flex: 1 }} onClick={saveUserEdit}>Save User</button>
+                      <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => deleteUser(editUserId)}>Delete</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="card-title" style={{ margin: '12px 0 8px', color: '#00ff88' }}>Top Users (Leaderboard)</div>
+              {adminLeaderboard.length === 0 && <div className="card">No users yet</div>}
+
+{adminLeaderboard.map((u, i) => (
+                <div className="card" key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px' }}>
+                  <div>
+                    <div style={{ fontWeight: 700 }}>#{i + 1} @{u.username || u.first_name || u.id}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#00ff88' }}>
+                      {formatNum(u.total_earned, 6)} earned • Bal {formatNum(u.balance, 4)} • Inv {u.invite_count || 0}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: '#666' }}>ID: {u.id}</div>
+                  </div>
+                  <button className="btn btn-outline" style={{ padding: '6px 10px', fontSize: '0.75rem' }}
+                    onClick={() => { setEditUserId(String(u.id)); loadUserDetails(u.id); window.scrollTo(0, 0); }}>
+                    Edit
+                  </button>
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* REFERRALS admin list */}
+          {adminTab === 'referrals' && (
+            <>
+              <div className="card-title" style={{ marginBottom: 8, color: '#00ff88' }}>All Referrals</div>
+              {adminReferrals.length === 0 && <div className="card">No referrals yet</div>}
+              {adminReferrals.map((r) => (
+                <div className="card" key={r.id} style={{ padding: '10px 14px' }}>
+                  <div style={{ fontWeight: 600 }}>
+                    @{r.referrer_name || r.referrer_id} → @{r.referred_name || r.referred_id}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#00ff88' }}>
+                    Reward: +{formatNum(r.reward, 12)} HYPE • ID: {r.id}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+
+          {adminTab === 'withdrawals' && (
+            <>
+              <div className="card" style={{ marginBottom: 10 }}>
+                <div className="card-title">Withdrawal History Control</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {['pending', 'processing', 'approved', 'rejected'].map((s) => (
+                    <button
+                      key={s}
+                      className={`admin-tab ${adminWdFilter === s ? 'active' : ''}`}
+                      onClick={() => {
+                        setAdminWdFilter(s);
+                        api(`/api/admin/withdrawals?status=${s}`).then((d) => {
+                          if (!d.error) setAdminWithdrawals(d.withdrawals || []);
+                        });
+                      }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {adminWithdrawals.length === 0 && (
+                <div className="card">No {adminWdFilter} withdrawals</div>
+              )}
+              {adminWithdrawals.map((w) => (
+                <div className="card" key={w.id}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      @{w.username || w.user_id} • <strong>{formatNum(w.amount, 8)} HYPE</strong>
+                    </div>
+                    <span style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 800,
+                      color:
+                        w.status === 'approved' ? '#00ff88'
+                        : w.status === 'rejected' ? '#ff5566'
+                        : w.status === 'processing' ? '#66aaff'
+                        : '#ffaa00',
+                    }}>
+                      {w.status}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.78rem', wordBreak: 'break-all', margin: '6px 0', color: '#a0ffc0' }}>
+                    {w.wallet_address}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: 8 }}>
+                    ID: {w.id} • User: {w.user_id}
+                    {w.created_at ? ` • ${new Date((w.created_at > 1e12 ? w.created_at : w.created_at * 1000)).toLocaleString()}` : ''}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {w.status !== 'approved' && (
+                      <button className="btn btn-primary" style={{ flex: 1, padding: 8, minWidth: 90 }} onClick={() => adminAction(w.id, 'approve')}>
+                        Approve
+                      </button>
+                    )}
+                    {w.status !== 'processing' && (
+                      <button className="btn btn-outline" style={{ flex: 1, padding: 8, minWidth: 90 }} onClick={() => adminAction(w.id, 'processing')}>
+                        Processing
+                      </button>
+                    )}
+                    {w.status !== 'rejected' && (
+                      <button className="btn btn-danger" style={{ flex: 1, padding: 8, minWidth: 90 }} onClick={() => adminAction(w.id, 'reject')}>
+                        Reject / Refund
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+
+          {adminTab === 'tasks' && (
+            <>
+              <div className="card">
+                <div className="card-title">Add New Task</div>
+                <input className="input" placeholder="Title" value={newTask.title} onChange={(e) => setNewTask({ ...newTask, title: e.target.value })} />
+                <select className="input" value={newTask.type} onChange={(e) => setNewTask({ ...newTask, type: e.target.value })}>
+                  <option value="telegram">Telegram Channel</option>
+                  <option value="youtube">YouTube Visit Task</option>
+                </select>
+                <input className="input" placeholder="Link" value={newTask.link} onChange={(e) => setNewTask({ ...newTask, link: e.target.value })} />
+                <div className="muted" style={{ fontSize: 12 }}>{newTask.type === 'telegram' ? 'Public t.me channel link required. Add the bot as a channel admin for automatic membership verification.' : 'YouTube link opens for the user; they return to HYPE Tap and wait 5 seconds before claiming.'}</div>
+
+<input className="input" placeholder="Reward HYPE" value={newTask.reward} onChange={(e) => setNewTask({ ...newTask, reward: e.target.value })} />
+                <button className="btn btn-primary" style={{ width: '100%' }} onClick={addTask}>
+                  Add Task
+                </button>
+              </div>
+              {adminTasks.map((t) => (
+                <div className="card" key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div>{t.title}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#00ff88' }}>+{formatNum(t.reward, 12)} • {t.type}</div>
+                  </div>
+                  <button className="btn btn-danger" style={{ padding: '6px 12px' }} onClick={() => deleteTask(t.id)}>
+                    Delete
+                  </button>
+                </div>
+              ))}
+            </>
+          )}
+
+          {adminTab === 'broadcast' && (
+            <div className="card">
+              <div className="card-title"><Icon name="megaphone" size={16} /> Advanced Broadcast</div>
+              <div style={{ fontSize: '0.75rem', color: '#888', marginBottom: 10 }}>
+                Text only, Photo only, ya dono — sab users ko Telegram par bheja jayega
+              </div>
+
+              <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}><Icon name="image" size={14} /> Photo URL (optional)</label>
+              <input
+                className="input"
+                type="url"
+                placeholder="https://example.com/image.jpg"
+                value={broadcastPhoto}
+                onChange={(e) => setBroadcastPhoto(e.target.value)}
+              />
+              {broadcastPhoto.trim() && (
+                <div style={{ marginBottom: 12, textAlign: 'center' }}>
+                  <img
+                    src={broadcastPhoto.trim()}
+                    alt="Preview"
+                    style={{ maxWidth: '100%', maxHeight: 180, borderRadius: 12, border: '1px solid rgba(0,255,136,0.3)' }}
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                </div>
+              )}
+
+              <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}><Icon name="message" size={14} /> Message / Caption</label>
+              <textarea
+                className="input"
+                rows={4}
+                placeholder="Message to all users... (photo ke saath caption bhi ban sakta hai)"
+                value={broadcastMsg}
+                onChange={(e) => setBroadcastMsg(e.target.value)}
+                style={{ resize: 'vertical' }}
+              />
+
+              <button
+                className="btn btn-gold"
+                style={{ width: '100%', opacity: broadcastSending ? 0.7 : 1 }}
+                onClick={sendBroadcast}
+                disabled={broadcastSending}
+              >
+                {broadcastSending ? <><Icon name="clock" size={14} /> Sending to all users...</> : <><Icon name="rocket" size={14} /> Send Broadcast to Everyone</>}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Bottom Nav */}
+      <div className="bottom-nav">
+        <button className={`nav-item ${tab === 'tap' ? 'active' : ''}`} onClick={() => setTab('tap')}>
+          <span className="nav-icon-wrap"><Icon name="zap" size={22} /></span>
+          <span className="nav-label">Mine</span>
+        </button>
+        <button className={`nav-item ${tab === 'tasks' ? 'active' : ''}`} onClick={() => setTab('tasks')}>
+          <span className="nav-icon-wrap"><Icon name="gift" size={22} /></span>
+          <span className="nav-label">Tasks</span>
+        </button>
+        <button className={`nav-item ${tab === 'friends' ? 'active' : ''}`} onClick={() => setTab('friends')}>
+
+<span className="nav-icon-wrap"><Icon name="users" size={22} /></span>
+          <span className="nav-label">Friends</span>
+        </button>
+        <button className={`nav-item ${tab === 'leaderboard' ? 'active' : ''}`} onClick={() => setTab('leaderboard')}>
+          <span className="nav-icon-wrap"><Icon name="trophy" size={22} /></span>
+          <span className="nav-label">Rank</span>
+        </button>
+        <button className={`nav-item ${tab === 'wallet' ? 'active' : ''}`} onClick={() => setTab('wallet')}>
+          <span className="nav-icon-wrap"><Icon name="wallet" size={22} /></span>
+          <span className="nav-label">Wallet</span>
+        </button>
+      </div>
+    </div>
+  );
+}
++Number(fee.amountUSD).toFixed(4) : fee.token?.symbol ? fee.token.symbol+' fee' : 'Shown in wallet'}</strong></div>)}
+              {swapQuote.estimate.priceImpact && <div style={{display:'flex',justifyContent:'space-between',gap:8,fontSize:'0.73rem',marginBottom:7}}><span style={{color:'#9aa'}}>Price impact</span><strong>{(Number(swapQuote.estimate.priceImpact)*100).toFixed(2)}%</strong></div>}
+              <div style={{fontSize:'0.68rem',color:'#8b9',marginTop:8,lineHeight:1.45}}>Review the minimum received and fee before confirming. Token approval may be requested separately if this token has not been approved before.</div>
+            </div>}
+            {swapQuote && <button className="btn btn-primary" style={{width:'100%',marginTop:10}} onClick={executeNativeHypeSwap} disabled={swapBusy}>{swapBusy ? 'Processing…' : 'Review & confirm in wallet'}</button>}
             {swapStatus && <div style={{marginTop:10,fontSize:'0.75rem',color:'#a0ffc0',overflowWrap:'anywhere'}}>{swapStatus}</div>}
-            {!connectedWallet && <div style={{marginTop:8,fontSize:'0.72rem',color:'#ffaa00'}}>Connect a wallet above to swap.</div>}
-            <div style={{marginTop:8,fontSize:'0.68rem',color:'#777'}}>Quotes depend on live liquidity. Network gas fees may apply. Never share your seed phrase or private key.</div>
+            {!connectedWallet && <div style={{marginTop:8,fontSize:'0.72rem',color:'#ffaa00'}}>Connect your EVM wallet above to start swapping.</div>}
+            <div style={{marginTop:12,fontSize:'0.7rem',color:'#ffd27a',lineHeight:1.5}}>Important: this is not a deposit feature. Tokens must already be in your wallet on HyperEVM. Deposits made on Ethereum or another network will not automatically be available here. Never share your seed phrase or private key.</div>
           </div>
 
           <div className="card">
