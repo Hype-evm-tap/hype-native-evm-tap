@@ -738,9 +738,15 @@ const persistWallet = async (addr, walletProvider = null) => {
 
     const { default: EthereumProvider } = await import('@walletconnect/ethereum-provider');
 
+    // Reuse an already-approved WalletConnect session. Disconnecting it here
+    // used to destroy the Trust Wallet session every time the user retried.
     if (wcProviderRef.current) {
-      try { await wcProviderRef.current.disconnect(); } catch (_) {}
-      wcProviderRef.current = null;
+      try {
+        const existingAccounts = wcProviderRef.current.accounts?.length
+          ? wcProviderRef.current.accounts
+          : await wcProviderRef.current.request({ method: 'eth_accounts' });
+        if (existingAccounts?.[0]) return existingAccounts[0];
+      } catch (_) {}
     }
 
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://localhost';
@@ -821,7 +827,7 @@ const persistWallet = async (addr, walletProvider = null) => {
   };
 
   const connectExternalWallet = async () => {
-    if (connectedWallet || walletConnecting) return;
+    if (connectedWallet || evmSessionAddress || walletConnecting) return;
     setWalletConnecting(true);
 
     // Telegram Mini Apps run inside Telegram's WebView. An injected ethereum
@@ -907,6 +913,145 @@ const persistWallet = async (addr, walletProvider = null) => {
     showToast('Wallet disconnected');
   };
   const shortAddr = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '');
+  // Recover approved wallet sessions when the Mini App returns from Trust Wallet
+  // or Telegram Wallet. Query-only calls never open a wallet or request approval.
+  useEffect(() => {
+    let disposed = false;
+    let syncing = false;
+    const syncWalletsOnReturn = async () => {
+      if (disposed || syncing) return;
+      syncing = true;
+      try {
+        let evmAddress = '';
+        let activeProvider = wcProviderRef.current;
+
+        if (activeProvider) {
+          try {
+            const accounts = activeProvider.accounts?.length
+              ? activeProvider.accounts
+              : await activeProvider.request({ method: 'eth_accounts' });
+            evmAddress = accounts?.[0] || '';
+          } catch (_) {}
+        }
+
+        // Trust Wallet's injected provider can appear only after returning from
+        // its app. eth_accounts checks an existing grant without showing a prompt.
+        if (!evmAddress && window.ethereum) {
+          const providers = window.ethereum.providers?.length
+            ? window.ethereum.providers
+            : [window.ethereum];
+          const injected = providers.find((p) => p.isTrust || p.isTrustWallet) ||
+            providers.find((p) => p.isMetaMask && !p.isBraveWallet) ||
+            providers.find((p) => p.isRabby) || providers[0];
+          try {
+            const accounts = await injected.request({ method: 'eth_accounts' });
+            if (accounts?.[0]) {
+              evmAddress = accounts[0];
+              activeProvider = injected;
+            }
+          } catch (_) {}
+        }
+
+        // WalletConnect can restore its persisted session after a Telegram
+        // WebView resumes. Do not call enable() here: that would open a modal.
+        if (!evmAddress && !activeProvider) {
+          try {
+            const projectId = await getWcProjectId();
+            if (projectId) {
+              const { default: EthereumProvider } = await import('@walletconnect/ethereum-provider');
+              const restored = await EthereumProvider.init({
+                projectId,
+                chains: [1],
+                optionalChains: [999, 56],
+                showQrModal: false,
+                methods: ['personal_sign', 'eth_accounts', 'eth_requestAccounts', 'eth_sendTransaction', 'eth_call', 'eth_getTransactionReceipt', 'eth_chainId'],
+                events: ['chainChanged', 'accountsChanged', 'disconnect', 'session_delete'],
+                rpcMap: {
+                  999: 'https://rpc.hyperliquid.xyz/evm',
+                  1: 'https://ethereum.publicnode.com',
+                  56: 'https://bsc-dataseed.binance.org',
+                },
+                metadata: {
+                  name: 'Hype Token',
+                  description: 'Hype EVM Native — Tap to Earn',
+                  url: window.location.origin,
+                  icons: [`${window.location.origin}/hype-logo.png`],
+                },
+              });
+              const accounts = restored.accounts?.length
+                ? restored.accounts
+                : await restored.request({ method: 'eth_accounts' }).catch(() => []);
+              if (accounts?.[0]) {
+                activeProvider = restored;
+                evmAddress = accounts[0];
+                wcProviderRef.current = restored;
+                swapProviderRef.current = restored;
+                restored.on('accountsChanged', (next) => {
+                  const address = next?.[0] || '';
+                  setEvmSessionAddress(address);
+                  if (!address) { setConnectedWallet(''); setWdWallet(''); }
+                });
+                restored.on('disconnect', () => {
+                  setEvmSessionAddress('');
+                  setConnectedWallet('');
+                  setWdWallet('');
+                  wcProviderRef.current = null;
+                });
+                restored.on('session_delete', () => {
+                  setEvmSessionAddress('');
+                  setConnectedWallet('');
+                  setWdWallet('');
+                  wcProviderRef.current = null;
+                });
+              }
+            }
+          } catch (error) {
+            console.warn('WalletConnect session restore pending:', error);
+          }
+        }
+
+        if (!disposed && evmAddress) {
+          setEvmSessionAddress(evmAddress);
+          swapProviderRef.current = activeProvider || swapProviderRef.current;
+        }
+
+        // TON Connect keeps its approved session in the WebView while the
+        // external Telegram Wallet/Tonkeeper app is in the foreground.
+        const tonUI = tonConnectUIRef.current || window.__HYPE_TONCONNECT_UI__;
+        const tonAddress = tonUI?.connected ? String(tonUI.account?.address || '') : '';
+        if (!disposed && tonAddress) {
+          let verifiedWallet = null;
+          try {
+            const saved = await api('/api/ton-wallet');
+            const linked = saved?.wallet;
+            if (linked?.address_raw && linked.address_raw === tonAddress) verifiedWallet = linked;
+          } catch (_) {}
+          setTonWallet({
+            address_friendly: verifiedWallet?.address_friendly || tonAddress,
+            address_raw: tonAddress,
+            verified: Boolean(verifiedWallet),
+          });
+        }
+      } finally {
+        syncing = false;
+      }
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') syncWalletsOnReturn();
+    };
+    syncWalletsOnReturn();
+    window.addEventListener('pageshow', syncWalletsOnReturn);
+    window.addEventListener('focus', syncWalletsOnReturn);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      disposed = true;
+      window.removeEventListener('pageshow', syncWalletsOnReturn);
+      window.removeEventListener('focus', syncWalletsOnReturn);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
+
 
   const doCheckin = async () => {
     // Prevent duplicate requests while a claim is being processed.
@@ -2669,7 +2814,7 @@ const locked = !claimed && !current;
 
           <div className="card" style={{marginTop:12}}>
             <div className="card-title"><Icon name="ton" size={18} /> TON Wallet for Swap / Deposit</div>
-            {tonWallet?.address_friendly ? <div className="wc-status"><span className="wc-dot" /> TON {tonWallet.verified ? 'Connected & Verified' : 'Connected · Verification pending'}<div className="wc-addr">{tonWallet.address_friendly}</div></div> :
+            {tonWallet?.address_friendly ? <div className="wc-status"><span className="wc-dot" /> TON {tonWallet.verified ? 'Connected & Verified' : 'Connected'}<div className="wc-addr">{tonWallet.address_friendly}</div></div> :
               <button className="btn btn-secondary" style={{width:'100%'}} onClick={connectTonWallet} disabled={walletConnecting}>
                 <Icon name="ton" size={17} /> {walletConnecting ? 'Connecting…' : 'Connect TON Wallet'}
               </button>}
@@ -2781,7 +2926,7 @@ const locked = !claimed && !current;
             <div className="card-title"><Icon name="wallet" size={16} /> Wallet</div>
             {(connectedWallet || evmSessionAddress) ? (
               <div className="wallet-connected-box">
-                <div className="wc-status"><span className="wc-dot" /> EVM Wallet {connectedWallet ? 'Connected & Verified' : 'Connected · Verification pending'}</div>
+                <div className="wc-status"><span className="wc-dot" /> EVM Wallet {connectedWallet ? 'Connected & Verified' : 'Connected'}</div>
                 <div className="wc-addr">{connectedWallet || evmSessionAddress}</div>
                 <button className="btn btn-secondary" style={{width:'100%',marginTop:10}} onClick={disconnectWallet}>Disconnect</button>
               </div>
@@ -2799,7 +2944,7 @@ const locked = !claimed && !current;
             <div className="card-title"><Icon name="ton" size={20} title="TON" /> TON Wallet Connect</div>
             {tonWallet?.address_friendly ? (
               <div className="wallet-connected-box">
-                <div className="wc-status"><span className="wc-dot" /> TON wallet {tonWallet.verified ? 'connected & verified' : 'connected · verification pending'}</div>
+                <div className="wc-status"><span className="wc-dot" /> TON wallet {tonWallet.verified ? 'connected & verified' : 'connected'}</div>
                 <div className="wc-addr">{tonWallet.address_friendly}</div>
                 <button className="btn btn-secondary" style={{width:'100%',marginTop:10}} onClick={disconnectTonWallet}>Disconnect TON Wallet</button>
               </div>
