@@ -1162,6 +1162,7 @@ showToast(data.error || 'Already checked in today');
     if (data.success) {
       showToast('User updated');
       loadAdminLeaderboard();
+      api('/api/leaderboard').then((d) => setLeaderboard(d.leaderboard || []));
     } else {
       showToast(data.error || 'Failed');
     }
@@ -2069,7 +2070,7 @@ const locked = !claimed && !current;
                 {i < 3 && <span style={{ marginRight: 4 }}><Icon name="medal" size={16} /></span>}
                 @{p.username || p.first_name || p.id}
               </div>
-              <div className="lb-score">{formatNum(p.total_earned, 4)}</div>
+              <div className="lb-score">{formatNum(p.balance, 4)}</div>
             </div>
           ))}
         </div>
