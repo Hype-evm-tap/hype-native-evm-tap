@@ -1498,21 +1498,31 @@ showToast(data.error || 'Already checked in today');
       let ui = tonConnectUIRef.current;
       if (!ui) {
         const { TonConnectUI, CHAIN } = await import('@tonconnect/ui');
-        ui = new TonConnectUI({ manifestUrl: window.location.origin + '/tonconnect-manifest.json' });
+        ui = new TonConnectUI({
+          manifestUrl: window.location.origin + '/tonconnect-manifest.json',
+          enableAndroidBackHandler: false,
+        });
         ui.setConnectionNetwork(CHAIN.MAINNET);
         ui.onStatusChange(async (wallet) => {
           if (!wallet) return;
           const item = wallet.connectItems?.tonProof;
-          if (!item || !('proof' in item) || tonProofVerifyingRef.current) return;
+          if (!item || !('proof' in item)) {
+            showToast('This TON wallet did not return TON proof. Try Tonkeeper or another TON mainnet wallet.');
+            try { await ui.disconnect(); } catch (_) {}
+            return;
+          }
+          if (tonProofVerifyingRef.current) return;
           tonProofVerifyingRef.current = true;
           try {
+            const walletStateInit = wallet.account?.walletStateInit;
+            if (!walletStateInit) throw new Error('TON wallet did not provide wallet state. Reconnect and approve the proof.');
             const result = await api('/api/ton-proof/verify', {
               method: 'POST',
               body: JSON.stringify({
                 address: wallet.account.address,
                 network: wallet.account.chain,
-                public_key: wallet.account.publicKey,
-                wallet_state_init: wallet.account.walletStateInit,
+                public_key: wallet.account.publicKey || undefined,
+                wallet_state_init: walletStateInit,
                 proof: item.proof,
               }),
             });
@@ -1531,8 +1541,12 @@ showToast(data.error || 'Already checked in today');
       if (ui.connected) {
         await ui.disconnect();
       }
+      ui.setConnectRequestParameters({ state: 'loading' });
       const challenge = await api('/api/ton-proof/payload', { method: 'POST', body: '{}' });
-      if (!challenge.payload) throw new Error(challenge.error || 'Could not prepare TON wallet proof');
+      if (!challenge.payload) {
+        ui.setConnectRequestParameters(null);
+        throw new Error(challenge.error || 'Could not prepare TON wallet proof');
+      }
       ui.setConnectRequestParameters({ state: 'ready', value: { tonProof: challenge.payload } });
       await ui.openModal();
     } catch (e) {
