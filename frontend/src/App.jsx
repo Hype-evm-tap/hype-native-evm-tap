@@ -39,6 +39,7 @@ function formatTime(sec) {
 // Lucide / Feather style SVG icons (JVault-like)
 const SVGS = {
   ton: (<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#0098EA"/><path d="M8.3 9.5h15.4c1.6 0 2.6 1.7 1.8 3.1L17.7 25c-.8 1.4-2.6 1.4-3.4 0L6.5 12.6c-.8-1.4.2-3.1 1.8-3.1Zm3.1 3.1 4.6 8 4.6-8h-9.2Z" fill="#fff"/></svg>),
+  eth: (<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#627EEA"/><path d="M16 4.5 8.8 16.3 16 20.5l7.2-4.2L16 4.5Zm0 17.4-7.2-4.2L16 27.5l7.2-9.8-7.2 4.2Z" fill="#fff" opacity=".95"/></svg>),
   usdt: (<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#26A17B"/><path fill="#fff" d="M17.9 17.4v-.1c-.1 0-.8.1-2 .1s-1.9-.1-2-.1v.1c-4.4-.2-7.7-1-7.7-2s3.3-1.8 7.7-2v3.2c.1 0 1 .1 2 .1s1.9-.1 2-.1v-3.2c4.4.2 7.7 1 7.7 2s-3.3 1.8-7.7 2Zm0-5.2V9.4h6.2V6.5H7.9v2.9h6.2v2.8C9 12.4 5 13.6 5 15.1v3.1c0 1.5 4 2.7 9.1 2.9v4.4h3.8v-4.4c5.1-.2 9.1-1.4 9.1-2.9v-3.1c0-1.5-4-2.7-9.1-2.9Z"/></svg>),
   hype: (<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#101510" stroke="#00E887" strokeWidth="1.5"/><path d="M8 7h4v7h8V7h4v18h-4v-7h-8v7H8V7Z" fill="#00E887"/></svg>),
   telegram: (<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.7 3.3 18.6 20c-.2 1.2-.9 1.5-1.8.9l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5.1 9.3-8.4c.4-.4-.1-.6-.6-.2L6 13.5 1 12c-1.1-.3-1.1-1 .2-1.5L20.5 3c.9-.3 1.6.2 1.2 1.3Z"/></svg>),
@@ -2454,21 +2455,21 @@ const locked = !claimed && !current;
           <div className="card">
             <div className="card-title"><Icon name="coins" size={16} /> Deposit</div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-              {['ton', 'bep20', 'trc20'].map((network) => (
-                <button key={network} className={`admin-tab ${depositNetwork === network ? 'active' : ''}`} onClick={() => setDepositNetwork(network)} title={network === 'ton' ? 'TON / GRAM' : 'USDT ' + network.toUpperCase()} aria-label={network === 'ton' ? 'TON / GRAM' : 'USDT ' + network.toUpperCase()}>
-                  <Icon name={network === 'ton' ? 'ton' : 'usdt'} size={22} />
-                  {network !== 'ton' && <span style={{ fontSize: '0.72rem', marginLeft: 4 }}>{network.toUpperCase()}</span>}
+              {['ton', 'bep20', 'trc20', 'eth', 'usdc_eth'].map((network) => (
+                <button key={network} className={`admin-tab ${depositNetwork === network ? 'active' : ''}`} onClick={() => setDepositNetwork(network)} title={network === 'ton' ? 'TON / GRAM' : network === 'bep20' ? 'USDT BNB Smart Chain' : network === 'trc20' ? 'USDT TRON' : network === 'eth' ? 'ETH Ethereum' : 'USDC Ethereum ERC20'} aria-label={network === 'ton' ? 'TON / GRAM' : network === 'bep20' ? 'USDT BEP20' : network === 'trc20' ? 'USDT TRC20' : network === 'eth' ? 'ETH Ethereum' : 'USDC Ethereum ERC20'}>
+                  <Icon name={network === 'ton' ? 'ton' : network === 'eth' ? 'eth' : 'usdt'} size={22} />
+                  <span style={{ fontSize: '0.72rem', marginLeft: 4 }}>{network === 'ton' ? 'TON' : network === 'bep20' ? 'BEP20' : network === 'trc20' ? 'TRC20' : network === 'eth' ? 'ETH' : 'USDC'}</span>
                 </button>
               ))}
             </div>
             <div style={{ fontSize: '0.8rem', color: '#a0ffc0', marginBottom: 6 }}>
-              {depositNetwork === 'ton' ? <>Send native <Icon name="ton" size={17} title="TON" /> only (TON / GRAM uses this same address). Jettons are not accepted.</> : <>Send only <Icon name="usdt" size={17} title="USDT" /> on {depositNetwork.toUpperCase()} network to this address:</>}
+              {depositNetwork === 'ton' ? <>Send native <Icon name="ton" size={17} title="TON" /> only (TON / GRAM uses this same address). Jettons are not accepted.</> : depositNetwork === 'eth' ? <>Send native <Icon name="eth" size={17} title="ETH" /> only on Ethereum Mainnet to this address:</> : depositNetwork === 'usdc_eth' ? <>Send only <Icon name="usdt" size={17} title="USDC" /> (USDC ERC20) on Ethereum Mainnet to this address:</> : <>Send only <Icon name="usdt" size={17} title="USDT" /> on {depositNetwork.toUpperCase()} network to this address:</>}
             </div>
             <div style={{ padding: 10, borderRadius: 8, background: 'rgba(0,255,136,0.07)', wordBreak: 'break-all', fontSize: '0.78rem' }}>
-              {depositNetwork === 'ton' ? 'UQBtBjwUwBXKsJuRr1UFdba_B1Rh8gXo0uFBzuT9-mVC17yl' : depositNetwork === 'bep20' ? '0xaaa40bd792bd26c1e5f6481b25ac1f8d4cf62f4a' : 'THcEQMCe1eyfajz7TyFUe8EmW2AQuCc1do'}
+              {depositNetwork === 'ton' ? 'UQBtBjwUwBXKsJuRr1UFdba_B1Rh8gXo0uFBzuT9-mVC17yl' : depositNetwork === 'bep20' ? '0xaaa40bd792bd26c1e5f6481b25ac1f8d4cf62f4a' : depositNetwork === 'trc20' ? 'THcEQMCe1eyfajz7TyFUe8EmW2AQuCc1do' : '0x87Ad7Fe8Be9eeEa2E388F80f4C5fcF450E037463'}
             </div>
             <button className="btn btn-secondary" style={{ width: '100%', marginTop: 8 }} onClick={() => {
-              const address = depositNetwork === 'ton' ? 'UQBtBjwUwBXKsJuRr1UFdba_B1Rh8gXo0uFBzuT9-mVC17yl' : depositNetwork === 'bep20' ? '0xaaa40bd792bd26c1e5f6481b25ac1f8d4cf62f4a' : 'THcEQMCe1eyfajz7TyFUe8EmW2AQuCc1do';
+              const address = depositNetwork === 'ton' ? 'UQBtBjwUwBXKsJuRr1UFdba_B1Rh8gXo0uFBzuT9-mVC17yl' : depositNetwork === 'bep20' ? '0xaaa40bd792bd26c1e5f6481b25ac1f8d4cf62f4a' : depositNetwork === 'trc20' ? 'THcEQMCe1eyfajz7TyFUe8EmW2AQuCc1do' : '0x87Ad7Fe8Be9eeEa2E388F80f4C5fcF450E037463';
               navigator.clipboard?.writeText(address).then(() => showToast('Deposit address copied')).catch(() => showToast('Copy address manually'));
             }}>Copy Deposit Address</button>
             <input className="input" style={{ marginTop: 12 }} placeholder="Paste transaction hash" value={depositHash} onChange={(e) => setDepositHash(e.target.value.trim())} />
@@ -2476,10 +2477,10 @@ const locked = !claimed && !current;
               {depositBusy ? 'Checking blockchain…' : 'Verify Deposit'}
             </button>
             <div style={{ marginTop: 12, fontSize: '0.85rem', color: '#a0ffc0' }}>
-              Verified balance: <Icon name={depositNetwork === 'ton' ? 'ton' : 'usdt'} size={20} title={depositNetwork === 'ton' ? 'TON' : 'USDT'} /> {Number(depositData.balances?.[depositNetwork] || 0).toFixed(depositNetwork === 'ton' ? 9 : 6)}
+              Verified balance: <Icon name={depositNetwork === 'ton' ? 'ton' : depositNetwork === 'eth' ? 'eth' : 'usdt'} size={20} title={depositNetwork === 'ton' ? 'TON' : depositNetwork === 'eth' ? 'ETH' : depositNetwork === 'usdc_eth' ? 'USDC' : 'USDT'} /> {Number(depositData.balances?.[depositNetwork] || 0).toFixed(depositNetwork === 'ton' || depositNetwork === 'eth' ? 9 : 6)} {depositNetwork === 'usdc_eth' ? 'USDC' : depositNetwork === 'eth' ? 'ETH' : depositNetwork === 'ton' ? 'TON' : 'USDT'}
             </div>
             <div style={{ fontSize: '0.72rem', color: '#888', marginTop: 5 }}>
-              {depositNetwork === 'ton' ? 'TON sender must match your TON Connect signature-verified wallet. Connect your TON wallet above before submitting a deposit.' : 'Server checks the on-chain recipient, amount, confirmations and that the sender matches your signature-verified wallet. Each hash can be credited once.'}
+              {depositNetwork === 'ton' ? 'TON sender must match your TON Connect signature-verified wallet. Connect your TON wallet above before submitting a deposit.' : 'Ethereum deposits require ETH or native USDC ERC20 on Ethereum Mainnet. The sender must match your signature-verified EVM wallet. Each transaction hash can be credited once.'}
             </div>
           </div>
 
