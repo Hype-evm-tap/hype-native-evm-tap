@@ -1506,8 +1506,8 @@ showToast(data.error || 'Already checked in today');
           if (!window.__HYPE_TONCONNECT_LOAD_PROMISE__) {
             window.__HYPE_TONCONNECT_LOAD_PROMISE__ = (async () => {
               const sources = [
-                'https://unpkg.com/@tonconnect/ui@2.0.11/dist/tonconnect-ui.min.js',
-                'https://cdn.jsdelivr.net/npm/@tonconnect/ui@2.0.11/dist/tonconnect-ui.min.js',
+                'https://unpkg.com/@tonconnect/ui@5.0.2/dist/tonconnect-ui.min.js',
+                'https://cdn.jsdelivr.net/npm/@tonconnect/ui@5.0.2/dist/tonconnect-ui.min.js',
               ];
               let lastError;
               for (const src of sources) {
