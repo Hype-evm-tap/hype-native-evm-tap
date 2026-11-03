@@ -2481,6 +2481,9 @@ const locked = !claimed && !current;
       {/* SWAP / DEPOSIT — Mining GRAM style */}
       {tab === 'swap' && (
         <div className="page">
+          <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 9, margin: '4px 2px 14px', color: '#f0d878' }}>
+            <Icon name="arrow-left-right" size={19} /> HYPE Swap
+          </div>
           {/* Top balances — HYPE / TON / USDT */}
           <div className="card" style={{ background: 'linear-gradient(160deg,rgba(0,40,28,0.95),rgba(6,14,12,0.98))', border: '1px solid rgba(0,255,136,0.22)', textAlign: 'center', padding: '22px 16px 18px' }}>
             <div style={{ fontSize: '0.72rem', letterSpacing: 1.5, color: '#8da99a', fontWeight: 700, marginBottom: 6 }}>TOTAL BALANCE</div>
