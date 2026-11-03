@@ -1501,50 +1501,58 @@ showToast(data.error || 'Already checked in today');
         // Load the official browser bundle outside Vite's module graph.
         // This avoids Solid/Vite interop errors such as "src is not a function".
         if (!window.TON_CONNECT_UI?.TonConnectUI) {
-          // Remove a stale/failed tag first; attaching listeners to an already-fired
-          // script load event can leave the connect button waiting forever.
-          document.querySelectorAll('script[data-tonconnect-ui]').forEach((node) => node.remove());
-          const sources = [
-            'https://unpkg.com/@tonconnect/ui@2.0.11/dist/tonconnect-ui.min.js',
-            'https://cdn.jsdelivr.net/npm/@tonconnect/ui@2.0.11/dist/tonconnect-ui.min.js',
-          ];
-          let lastError;
-          for (const src of sources) {
-            try {
-              await new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                const timeout = setTimeout(() => {
-                  script.remove();
-                  reject(new Error('TON Connect UI download timed out'));
-                }, 12000);
-                script.src = src;
-                script.async = true;
-                script.dataset.tonconnectUi = 'true';
-                script.onload = () => {
-                  clearTimeout(timeout);
-                  window.TON_CONNECT_UI?.TonConnectUI
-                    ? resolve()
-                    : reject(new Error('TON Connect UI API was not found after download'));
-                };
-                script.onerror = () => {
-                  clearTimeout(timeout);
-                  script.remove();
-                  reject(new Error('TON Connect UI CDN unavailable'));
-                };
-                document.head.appendChild(script);
-              });
-              if (window.TON_CONNECT_UI?.TonConnectUI) break;
-            } catch (error) {
-              lastError = error;
-              document.querySelectorAll('script[data-tonconnect-ui]').forEach((node) => node.remove());
-            }
+          // Share one loader promise across taps. Never remove/re-execute a bundle
+          // that may already have registered the global "tc-root" custom element.
+          if (!window.__HYPE_TONCONNECT_LOAD_PROMISE__) {
+            window.__HYPE_TONCONNECT_LOAD_PROMISE__ = (async () => {
+              const sources = [
+                'https://unpkg.com/@tonconnect/ui@2.0.11/dist/tonconnect-ui.min.js',
+                'https://cdn.jsdelivr.net/npm/@tonconnect/ui@2.0.11/dist/tonconnect-ui.min.js',
+              ];
+              let lastError;
+              for (const src of sources) {
+                try {
+                  await new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    const timeout = setTimeout(() => {
+                      script.remove();
+                      reject(new Error('TON Connect UI download timed out'));
+                    }, 12000);
+                    script.src = src;
+                    script.async = true;
+                    script.dataset.tonconnectUi = 'true';
+                    script.onload = () => {
+                      clearTimeout(timeout);
+                      if (window.TON_CONNECT_UI?.TonConnectUI) resolve();
+                      else reject(new Error('TON Connect bundle loaded but its API was not exposed; reload the app before retrying.'));
+                    };
+                    script.onerror = () => {
+                      clearTimeout(timeout);
+                      script.remove();
+                      reject(new Error('TON Connect UI CDN unavailable'));
+                    };
+                    document.head.appendChild(script);
+                  });
+                  if (window.TON_CONNECT_UI?.TonConnectUI) return true;
+                } catch (error) {
+                  lastError = error;
+                  // A successfully executed bundle can register tc-root even if
+                  // its global export is missing. Never load a second copy then.
+                  if (window.customElements?.get('tc-root')) throw error;
+                }
+              }
+              throw new Error(lastError?.message || 'Could not load TON Connect UI. Check your connection and retry.');
+            })();
           }
-          if (!window.TON_CONNECT_UI?.TonConnectUI) {
-            throw new Error(lastError?.message || 'Could not load TON Connect UI. Check your connection and retry.');
-          }
+          await window.__HYPE_TONCONNECT_LOAD_PROMISE__;
         }
         const TonConnectUI = window.TON_CONNECT_UI?.TonConnectUI;
-        if (typeof TonConnectUI !== 'function') throw new Error('TON Connect UI is unavailable. Please retry.');
+        if (typeof TonConnectUI !== 'function') throw new Error('TON Connect UI failed to initialize. Reload the app and retry.');
+        // If a previous constructor partially registered tc-root then failed,
+        // creating another instance cannot recover and would throw the same error.
+        if (!window.__HYPE_TONCONNECT_UI__ && window.customElements?.get('tc-root')) {
+          throw new Error('TON Connect UI was partially initialized. Reload the app, then connect again.');
+        }
         ui = new TonConnectUI({
           manifestUrl: window.location.origin + '/tonconnect-manifest.json',
           enableAndroidBackHandler: false,
