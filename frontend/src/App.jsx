@@ -685,10 +685,10 @@ const persistWallet = async (addr, walletProvider = null) => {
     // WalletConnect deep link so the exact pending session reaches the wallet.
     const provider = await EthereumProvider.init({
       projectId,
-      // Wallet sign-in is chain-independent and only proves address ownership.
-      // Require the widely supported Ethereum namespace; offer HyperEVM as optional.
-      chains: [1],
-      optionalChains: [999, 56],
+      // HYPE uses HyperEVM mainnet (chain ID 999). Request it as the
+      // required WalletConnect chain so Trust Wallet does not open Ethereum.
+      chains: [999],
+      optionalChains: [1, 56],
       showQrModal: !inTelegram,
       // Only account access and personal message signing are needed.
       // No transaction signing or transfer permissions are requested.
