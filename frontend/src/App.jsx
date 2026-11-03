@@ -2414,7 +2414,7 @@ const locked = !claimed && !current;
           </div>
 
           <div className="card">
-            <div className="card-title"><Icon name="hype" size={18} /> HyperEVM Swap · Native HYPE</div>
+            <div className="card-title"><img src="/hype-coin.svg" alt="HYPE" style={{width:24,height:24,objectFit:'contain'}} /> HyperEVM Swap · Native HYPE</div>
             <div style={{fontSize:'0.78rem',color:'#a0ffc0',marginBottom:10}}>Swap a supported HyperEVM token from your connected wallet into native HYPE. Chain ID 999. Each approval and swap is confirmed in your wallet.</div>
             <label style={{display:'block',fontSize:'0.78rem',color:'#9aa',marginBottom:5}}>You pay</label>
             <select className="input" value={swapTokenAddress} onChange={e=>{setSwapTokenAddress(e.target.value);setSwapQuote(null);}} disabled={swapBusy || !swapTokens.length}>
@@ -2484,9 +2484,9 @@ const locked = !claimed && !current;
           </div>
 
           <div className="card">
-            <div className="card-title"><Icon name="hype" size={20} title="HYPE" /> Withdraw</div>
+            <div className="card-title"><img src="/hype-coin.svg" alt="HYPE" style={{width:26,height:26,objectFit:'contain'}} /> Withdraw</div>
             <div style={{ marginBottom: 10, fontSize: '0.9rem' }}>
-              <Icon name="hype" size={20} title="HYPE" /> <strong style={{ color: '#00ff88' }}>{formatNum(user?.balance, 10)}</strong>
+              <img src="/hype-coin.svg" alt="HYPE" style={{width:24,height:24,objectFit:'contain',verticalAlign:'middle'}} /> <strong style={{ color: '#00ff88' }}>{formatNum(user?.balance, 10)}</strong>
             </div>
             <div style={{ marginBottom: 10, fontSize: '0.85rem', color: '#ffaa00' }}>
               Minimum withdraw is {config?.min_withdraw || 1} HYPE
@@ -2527,7 +2527,7 @@ const locked = !claimed && !current;
                 <div key={item.type + '-' + item.id} style={{ padding: '11px 0', borderBottom: '1px solid rgba(0,255,136,0.12)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
-                      <Icon name={assetIcon} size={22} title={item.asset} />
+                      {assetIcon === 'hype' ? <img src="/hype-coin.svg" alt="HYPE" style={{width:24,height:24,objectFit:'contain'}} /> : <Icon name={assetIcon} size={22} title={item.asset} />}
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: '0.86rem', fontWeight: 800 }}>{item.type === 'deposit' ? 'Deposit' : item.type === 'withdrawal' ? 'Withdrawal' : 'Swap'}</div>
                         <div style={{ fontSize: '0.72rem', color: '#9aa' }}>{name} {item.username ? '· @' + item.username : ''}</div>
