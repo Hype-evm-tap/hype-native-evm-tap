@@ -275,6 +275,16 @@ app.use('/api/*', async (c, next) => {
   return next();
 });
 
+// TON Connect requires a same-origin manifest. Keep the URL dynamic for custom domains.
+app.get('/tonconnect-manifest.json', (c) => {
+  const origin = new URL(c.req.url).origin;
+  return c.json({
+    url: origin,
+    name: 'HYPE Native',
+    iconUrl: origin + '/hype-logo.png',
+  }, 200, { 'Cache-Control': 'public, max-age=300' });
+});
+
 // ──── Routes ────
 
 // YouTube tasks use a manual visit flow; no Google account or OAuth is required.
@@ -585,11 +595,10 @@ app.post('/api/ton-proof/verify', async (c) => {
     if (!challenge || Number(challenge.expires_at) < nowSec()) return c.json({ error: 'TON wallet challenge expired. Reconnect.' }, 401);
     const expectedDomain = new URL(c.req.url).hostname;
     const verified = await verifyTonConnectProof(body, expectedDomain, String(challenge.payload));
-    await c.env.DB.batch([
-      c.env.DB.prepare('DELETE FROM ton_proof_challenges WHERE user_id = ? AND payload = ?').bind(userId, challenge.payload),
-      c.env.DB.prepare('INSERT INTO ton_wallet_links (user_id, address_raw, address_friendly, public_key, network, verified_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET address_raw = excluded.address_raw, address_friendly = excluded.address_friendly, public_key = excluded.public_key, network = excluded.network, verified_at = excluded.verified_at')
-        .bind(userId, verified.addressRaw, verified.addressFriendly, verified.publicKey, verified.network, nowSec()),
-    ]);
+    const consumed = await c.env.DB.prepare('DELETE FROM ton_proof_challenges WHERE user_id = ? AND payload = ? AND expires_at >= ?').bind(userId, challenge.payload, nowSec()).run();
+    if ((consumed.meta?.changes ?? 0) !== 1) return c.json({ error: 'TON proof challenge has already been used. Reconnect.' }, 409);
+    await c.env.DB.prepare('INSERT INTO ton_wallet_links (user_id, address_raw, address_friendly, public_key, network, verified_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET address_raw = excluded.address_raw, address_friendly = excluded.address_friendly, public_key = excluded.public_key, network = excluded.network, verified_at = excluded.verified_at')
+      .bind(userId, verified.addressRaw, verified.addressFriendly, verified.publicKey, verified.network, nowSec()).run();
     return c.json({ success: true, address: verified.addressFriendly, address_raw: verified.addressRaw });
   } catch (e: any) { return c.json({ error: e?.message || 'TON wallet proof verification failed' }, 401); }
 });
