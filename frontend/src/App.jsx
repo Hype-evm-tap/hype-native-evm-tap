@@ -267,6 +267,10 @@ export default function App() {
 
   // Admin
   const [adminTab, setAdminTab] = useState('stats');
+  const [assistantMessages, setAssistantMessages] = useState([]);
+  const [assistantInput, setAssistantInput] = useState('');
+  const [assistantBusy, setAssistantBusy] = useState(false);
+  const assistantScrollRef = useRef(null);
   const [adminStats, setAdminStats] = useState(null);
   const [adminWithdrawals, setAdminWithdrawals] = useState([]);
   const [adminDepositSwaps, setAdminDepositSwaps] = useState([]);
@@ -1447,6 +1451,43 @@ showToast(data.error || 'Already checked in today');
       }
     } else {
       showToast(data.error || 'Failed');
+    }
+  };
+
+
+  const sendHypeAssistant = async (textOverride) => {
+    const content = String(textOverride ?? assistantInput).trim();
+    if (!content || assistantBusy) return;
+    const initData = window.Telegram?.WebApp?.initData || tg?.initData || '';
+    if (!initData) {
+      showToast('Open HYPE inside Telegram to verify admin access');
+      return;
+    }
+    const nextMessages = [...assistantMessages, { role: 'user', content }];
+    setAssistantMessages(nextMessages);
+    setAssistantInput('');
+    setAssistantBusy(true);
+    try {
+      const response = await fetch('https://hype.rajtilakbbu1.workers.dev/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Telegram-Init-Data': initData,
+        },
+        body: JSON.stringify({ messages: nextMessages.slice(-12) }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.answer) {
+        throw new Error(data.error || 'HYPE AI request failed');
+      }
+      setAssistantMessages((prev) => [...prev, { role: 'assistant', content: data.answer }]);
+    } catch (error) {
+      setAssistantMessages((prev) => [...prev, {
+        role: 'assistant',
+        content: '⚠️ ' + (error?.message || 'Could not connect to HYPE AI. Please try again.'),
+      }]);
+    } finally {
+      setAssistantBusy(false);
     }
   };
 
@@ -3057,7 +3098,7 @@ const locked = !claimed && !current;
         <div className="page">
           <h3 style={{ color: '#f0d878', marginBottom: 12 }}><Icon name="settings" size={16} /> Admin Panel</h3>
           <div className="admin-tabs">
-            {['stats', 'activity', 'settings', 'users', 'referrals', 'deposits', 'withdrawals', 'tasks', 'broadcast'].map((t) => (
+            {['stats', 'activity', 'settings', 'users', 'referrals', 'deposits', 'withdrawals', 'tasks', 'broadcast', 'assistant'].map((t) => (
               <button
                 key={t}
                 className={`admin-tab ${adminTab === t ? 'active' : ''}`}
@@ -3403,6 +3444,64 @@ const locked = !claimed && !current;
                 </div>
               ))}
             </>
+          )}
+
+
+          {adminTab === 'assistant' && (
+            <div className="card" style={{ padding: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <div style={{ width: 42, height: 42, borderRadius: 14, display: 'grid', placeItems: 'center', background: 'linear-gradient(135deg, rgba(0,255,136,.2), rgba(240,216,120,.18))', border: '1px solid rgba(0,255,136,.35)', fontSize: 23 }}>🤖</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ color: '#f0d878', fontWeight: 800 }}>HYPE AI Assistant</div>
+                  <div style={{ color: '#7ee8ad', fontSize: 11 }}>Admin-only · App diagnostics enabled</div>
+                </div>
+                <button className="btn" style={{ padding: '6px 9px', fontSize: 11 }} onClick={() => setAssistantMessages([])}>New chat</button>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 12 }}>
+                {[
+                  'Check my app status and explain any problems.',
+                  'Audit the HYPE app for bugs and security risks.',
+                  'Suggest improvements to rewards, tasks and withdrawals.',
+                ].map((prompt) => (
+                  <button key={prompt} className="btn" disabled={assistantBusy} style={{ padding: '7px 9px', fontSize: 11, borderRadius: 12, whiteSpace: 'normal', textAlign: 'left' }} onClick={() => sendHypeAssistant(prompt)}>{prompt}</button>
+                ))}
+              </div>
+              <div ref={assistantScrollRef} style={{ minHeight: 210, maxHeight: 430, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, padding: 10, borderRadius: 12, background: 'rgba(0,0,0,.28)', border: '1px solid rgba(0,255,136,.12)' }}>
+                {assistantMessages.length === 0 && (
+                  <div style={{ color: '#9aa', textAlign: 'center', margin: 'auto', padding: '22px 12px', fontSize: 13, lineHeight: 1.6 }}>
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>✦</div>
+                    <strong style={{ color: '#e9f7ed' }}>Namaste! Main HYPE AI hoon.</strong>
+                    <div>App ke bugs, admin settings, rewards, deposits, withdrawals aur naye features ke baare mein mujhse poochho.</div>
+                    <div style={{ color: '#d5b95e', marginTop: 8 }}>Main live app diagnostics dekh sakta hoon aur code fixes taiyar kar sakta hoon.</div>
+                  </div>
+                )}
+                {assistantMessages.map((message, index) => (
+                  <div key={index} style={{ alignSelf: message.role === 'user' ? 'flex-end' : 'stretch', maxWidth: message.role === 'user' ? '88%' : '100%', padding: '10px 12px', borderRadius: 12, background: message.role === 'user' ? 'rgba(0,160,95,.22)' : 'rgba(255,255,255,.055)', border: '1px solid ' + (message.role === 'user' ? 'rgba(0,255,136,.24)' : 'rgba(255,255,255,.08)'), color: '#e8eee9', fontSize: 13, lineHeight: 1.55, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                    <div style={{ color: message.role === 'user' ? '#8dffc2' : '#f0d878', fontSize: 10, fontWeight: 800, marginBottom: 5 }}>{message.role === 'user' ? 'YOU' : 'HYPE AI'}</div>
+                    {message.content}
+                  </div>
+                ))}
+                {assistantBusy && <div style={{ color: '#8dffc2', fontSize: 12 }}>HYPE AI is thinking…</div>}
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'flex-end' }}>
+                <textarea
+                  className="input"
+                  rows={2}
+                  value={assistantInput}
+                  onChange={(e) => setAssistantInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendHypeAssistant(); } }}
+                  placeholder="Ask HYPE AI to diagnose or improve your app…"
+                  style={{ flex: 1, resize: 'vertical', minHeight: 48, margin: 0 }}
+                  disabled={assistantBusy}
+                />
+                <button className="btn btn-primary" disabled={assistantBusy || !assistantInput.trim()} onClick={() => sendHypeAssistant()} style={{ minWidth: 66, minHeight: 46 }}>
+                  {assistantBusy ? '…' : 'Send'}
+                </button>
+              </div>
+              <div style={{ color: '#778', fontSize: 10, marginTop: 8, lineHeight: 1.45 }}>
+                Secure admin verification uses your Telegram session. Never send passwords, seed phrases, private keys or API secrets here. AI suggestions do not deploy code automatically.
+              </div>
+            </div>
           )}
 
           {adminTab === 'broadcast' && (
