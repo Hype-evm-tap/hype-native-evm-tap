@@ -1856,16 +1856,6 @@ user: tg?.initDataUnsafe?.user,
           )}
         </div>
         <div className="header-right">
-          {connectedWallet ? (
-            <button className="connect-wallet-btn connected" onClick={disconnectWallet} title={connectedWallet}>
-
-<Icon name="wallet" size={14} /> Connected
-            </button>
-          ) : (
-            <button className="connect-wallet-btn" onClick={connectExternalWallet} disabled={walletConnecting}>
-              <Icon name="wallet" size={14} /> {walletConnecting ? 'Connecting…' : 'Connect Wallet'}
-            </button>
-          )}
           <div className="uid-badge">
             <Icon name="folder" size={12} /> UID {user?.id || '—'}
           </div>
@@ -2528,7 +2518,7 @@ const locked = !claimed && !current;
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 14 }}>
             <div className="card" style={{ margin: 0, padding: '14px 10px', textAlign: 'center' }}>
-              <img src="/hype-coin.svg" alt="HYPE" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'contain', margin: '0 auto 6px' }} />
+              <img src="/hype-icon.png" alt="HYPE" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'contain', margin: '0 auto 6px' }} />
               <div style={{ fontSize: '0.65rem', color: '#9aa', fontWeight: 800 }}>HYPE</div>
               <div style={{ fontSize: '0.95rem', fontWeight: 900, color: '#00ff88', marginTop: 3 }}>{formatNum(user?.balance || 0, 6)}</div>
             </div>
@@ -2550,7 +2540,7 @@ const locked = !claimed && !current;
           <div style={{ fontSize: '0.68rem', letterSpacing: 1.2, color: '#7a9a88', fontWeight: 800, margin: '4px 2px 8px' }}>BALANCES</div>
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             {[
-              { key: 'hype', label: 'HYPE', sub: 'After swap · app balance', amount: formatNum(user?.balance || 0, 8), icon: <img src="/hype-coin.svg" alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'contain' }} /> },
+              { key: 'hype', label: 'HYPE', sub: 'After swap · app balance', amount: formatNum(user?.balance || 0, 8), icon: <img src="/hype-icon.png" alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'contain' }} /> },
               { key: 'ton', label: 'TON', sub: 'Native TON deposit', amount: Number(depositData.balances?.ton || 0).toFixed(6), icon: <Icon name="ton" size={36} /> },
               { key: 'bep20', label: 'USDT BEP20', sub: 'BNB Smart Chain', amount: Number(depositData.balances?.bep20 || 0).toFixed(4), icon: <Icon name="usdt" size={36} /> },
               { key: 'trc20', label: 'USDT TRC20', sub: 'TRON network', amount: Number(depositData.balances?.trc20 || 0).toFixed(4), icon: <Icon name="usdt" size={36} /> },
@@ -2671,64 +2661,26 @@ const locked = !claimed && !current;
         <div className="page">
           <div className="card">
             <div className="card-title"><Icon name="wallet" size={16} /> Wallet</div>
-            {connectedWallet ? (
-              <div className="wallet-connected-box">
-                <div className="wc-status"><span className="wc-dot" /> Connected</div>
-                <div className="wc-addr">{connectedWallet}</div>
-                <button className="btn btn-secondary" style={{ width: '100%', marginTop: 10 }} onClick={disconnectWallet}>
-                  Disconnect
-                </button>
-              </div>
-            ) : (
-              <div className="wallet-connect-box">
-                <p style={{ color: '#a0ffc0', fontSize: '0.85rem', marginBottom: 12 }}>
-                  Connect your external wallet (MetaMask / WalletConnect) to withdraw.
-                </p>
-                <button className="btn btn-primary" style={{ width: '100%' }} onClick={connectExternalWallet} disabled={walletConnecting}>
-                  <Icon name="wallet" size={16} /> {walletConnecting ? 'Connecting…' : 'Connect Wallet'}
-                </button>
-                <div style={{ marginTop: 14, borderTop: '1px solid rgba(0,255,136,0.15)', paddingTop: 12 }}>
-                  <div style={{ fontSize: '0.78rem', color: '#888', marginBottom: 6 }}>Or paste address manually</div>
-                  <input
-                    className="input"
-                    placeholder="0x..."
-                    value={wdWallet}
-                    onChange={(e) => setWdWallet(e.target.value.trim())}
-                  />
-                  <button
-                    className="btn btn-secondary"
-                    style={{ width: '100%', marginTop: 8 }}
-                    onClick={() => persistWallet(wdWallet)}
-                  >
-                    Save Address
-                  </button>
-                </div>
-              </div>
-            )}
+            <div className="wallet-connect-box">
+              <p style={{ color: '#a0ffc0', fontSize: '0.85rem', marginBottom: 12 }}>
+                Enter your HyperEVM withdrawal address.
+              </p>
+              <input
+                className="input"
+                placeholder="0x..."
+                value={wdWallet}
+                onChange={(e) => setWdWallet(e.target.value.trim())}
+              />
+              <button className="btn btn-secondary" style={{ width: '100%', marginTop: 8 }} onClick={() => persistWallet(wdWallet)}>
+                Save Address
+              </button>
+            </div>
           </div>
 
           <div className="card">
-            <div className="card-title"><Icon name="ton" size={20} title="TON" /> TON Wallet Ownership</div>
-            {tonWallet?.address_friendly ? (
-              <div className="wallet-connected-box">
-                <div className="wc-status"><span className="wc-dot" /> TON ownership verified</div>
-                <div className="wc-addr">{tonWallet.address_friendly}</div>
-                <button className="btn btn-secondary" style={{ width: '100%', marginTop: 10 }} onClick={disconnectTonWallet}>Disconnect TON Wallet</button>
-              </div>
-            ) : (
-              <>
-                <div style={{ fontSize: '0.8rem', color: '#a0ffc0', marginBottom: 10 }}>Connect TON wallet and approve a TON Connect ownership proof. No transaction or token transfer is requested.</div>
-                <button className="btn btn-primary" style={{ width: '100%' }} onClick={connectTonWallet} disabled={walletConnecting}>
-                  <Icon name="ton" size={18} /> {walletConnecting ? 'Connecting…' : 'Connect TON Wallet'}
-                </button>
-              </>
-            )}
-          </div>
-
-          <div className="card">
-            <div className="card-title"><img src="/hype-coin.svg" alt="HYPE" style={{width:26,height:26,objectFit:'contain',borderRadius:'50%'}} /> Withdraw</div>
+            <div className="card-title"><img src="/hype-icon.png" alt="HYPE" style={{width:26,height:26,objectFit:'contain',borderRadius:'50%'}} /> Withdraw</div>
             <div style={{ marginBottom: 10, fontSize: '0.9rem' }}>
-              <img src="/hype-coin.svg" alt="HYPE" style={{width:24,height:24,objectFit:'contain',borderRadius:'50%',verticalAlign:'middle'}} /> <strong style={{ color: '#00ff88' }}>{formatNum(user?.balance, 10)}</strong>
+              <img src="/hype-icon.png" alt="HYPE" style={{width:24,height:24,objectFit:'contain',borderRadius:'50%',verticalAlign:'middle'}} /> <strong style={{ color: '#00ff88' }}>{formatNum(user?.balance, 10)}</strong>
             </div>
             <div style={{ marginBottom: 10, fontSize: '0.85rem', color: '#ffaa00' }}>
               Minimum withdraw is {config?.min_withdraw || 1} HYPE
@@ -2769,7 +2721,7 @@ const locked = !claimed && !current;
                 <div key={item.type + '-' + item.id} style={{ padding: '11px 0', borderBottom: '1px solid rgba(0,255,136,0.12)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
-                      {assetIcon === 'hype' ? <img src="/hype-coin.svg" alt="HYPE" style={{width:24,height:24,objectFit:'contain',borderRadius:'50%'}} /> : <Icon name={assetIcon} size={22} title={item.asset} />}
+                      {assetIcon === 'hype' ? <img src="/hype-icon.png" alt="HYPE" style={{width:24,height:24,objectFit:'contain',borderRadius:'50%'}} /> : <Icon name={assetIcon} size={22} title={item.asset} />}
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: '0.86rem', fontWeight: 800 }}>{item.type === 'deposit' ? 'Deposit' : item.type === 'withdrawal' ? 'Withdrawal' : 'Swap'}</div>
                         <div style={{ fontSize: '0.72rem', color: '#9aa' }}>{name} {item.username ? '· @' + item.username : ''}</div>
