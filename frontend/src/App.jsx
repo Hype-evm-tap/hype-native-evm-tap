@@ -678,15 +678,18 @@ const persistWallet = async (addr, walletProvider = null) => {
     }
 
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://localhost';
+    const inTelegram = Boolean(window.Telegram?.WebApp?.initData);
 
-    // chains is REQUIRED (empty optionalChains-only → "configuration not found")
+    // In Telegram's Android WebView, the default WalletConnect modal can open
+    // Trust Wallet without forwarding the pairing URI. Use Trust's documented
+    // WalletConnect deep link so the exact pending session reaches the wallet.
     const provider = await EthereumProvider.init({
       projectId,
       // Wallet sign-in is chain-independent and only proves address ownership.
       // Require the widely supported Ethereum namespace; offer HyperEVM as optional.
       chains: [1],
       optionalChains: [999, 56],
-      showQrModal: true,
+      showQrModal: !inTelegram,
       // Only account access and personal message signing are needed.
       // No transaction signing or transfer permissions are requested.
       methods: ['personal_sign', 'eth_accounts', 'eth_requestAccounts'],
@@ -712,6 +715,18 @@ const persistWallet = async (addr, walletProvider = null) => {
     });
 
     wcProviderRef.current = provider;
+
+    if (inTelegram) {
+      provider.on('display_uri', (uri) => {
+        const trustLink = 'https://link.trustwallet.com/wc?uri=' + encodeURIComponent(uri);
+        try {
+          // Telegram's openLink hands the universal link to Android's app resolver.
+          window.Telegram.WebApp.openLink(trustLink);
+        } catch (_) {
+          window.location.href = trustLink;
+        }
+      });
+    }
 
     provider.on('accountsChanged', (accounts) => {
       if (accounts?.[0]) { setConnectedWallet(''); setWdWallet(''); }
