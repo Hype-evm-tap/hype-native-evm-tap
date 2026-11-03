@@ -312,7 +312,8 @@ app.get('/api/health', (c) => c.json({ ok: true, time: new Date().toISOString() 
 
 app.get('/api/config', async (c) => {
   const id = c.env.WALLETCONNECT_PROJECT_ID || c.env.VITE_WALLETCONNECT_PROJECT_ID || '';
-  const config = await getConfig(c.env.DB, c.env);\n  return c.json({ walletConnectProjectId: id, bot_username: c.env.BOT_USERNAME || '', ad_reward: config.ad_reward, ads_enabled: config.ads_enabled, ads_daily_limit: 10 });
+  const config = await getConfig(c.env.DB, c.env);
+  return c.json({ walletConnectProjectId: id, bot_username: c.env.BOT_USERNAME || '', ad_reward: config.ad_reward, ads_enabled: config.ads_enabled, ads_daily_limit: 10 });
 });
 
 
