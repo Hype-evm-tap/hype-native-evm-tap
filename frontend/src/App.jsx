@@ -644,13 +644,22 @@ const persistWallet = async (addr, walletProvider = null) => {
       if (!challenge?.message) throw new Error(challenge?.error || 'Could not prepare sign-in message');
       const signer = walletProvider || wcProviderRef.current || window.ethereum;
       if (!signer?.request) throw new Error('Wallet session unavailable. Reconnect your wallet.');
-      // EIP-1193 personal_sign: encode the challenge as 0x-prefixed UTF-8 bytes.
-      const messageHex = '0x' + Array.from(new TextEncoder().encode(challenge.message))
-        .map((byte) => byte.toString(16).padStart(2, '0')).join('');
-      const signature = await signer.request({
-        method: 'personal_sign',
-        params: [messageHex, clean],
-      });
+      // Trust Wallet in Telegram WebView is more reliable with a plain UTF-8 message.
+      let signature;
+      try {
+        signature = await signer.request({
+          method: 'personal_sign',
+          params: [challenge.message, clean],
+        });
+      } catch (plainError) {
+        // Some EIP-1193 providers require the message as 0x-prefixed UTF-8 hex.
+        const messageHex = '0x' + Array.from(new TextEncoder().encode(challenge.message))
+          .map((byte) => byte.toString(16).padStart(2, '0')).join('');
+        signature = await signer.request({
+          method: 'personal_sign',
+          params: [messageHex, clean],
+        });
+      }
       const verified = await api('/api/wallet/verify', {
         method: 'POST',
         body: JSON.stringify({ address: clean, message: challenge.message, signature }),
@@ -782,8 +791,10 @@ const persistWallet = async (addr, walletProvider = null) => {
       wcProviderRef.current = null;
     });
 
-// enable() opens QR modal and waits for wallet approval
+// enable() opens the WalletConnect modal and waits for wallet approval.
     await provider.enable();
+    // Telegram Android WebView may expose the session/account slightly later.
+    await new Promise((resolve) => setTimeout(resolve, 800));
     const accounts = provider.accounts?.length
       ? provider.accounts
       : await provider.request({ method: 'eth_accounts' });
@@ -1402,8 +1413,8 @@ showToast(data.error || 'Already checked in today');
           if (!window.__HYPE_TONCONNECT_LOAD_PROMISE__) {
             window.__HYPE_TONCONNECT_LOAD_PROMISE__ = (async () => {
               const sources = [
-                'https://unpkg.com/@tonconnect/ui@5.0.1/dist/tonconnect-ui.min.js',
-                'https://cdn.jsdelivr.net/npm/@tonconnect/ui@5.0.2/dist/tonconnect-ui.min.js',
+                'https://unpkg.com/@tonconnect/ui@2.0.9/dist/tonconnect-ui.min.js',
+                'https://cdn.jsdelivr.net/npm/@tonconnect/ui@2.0.9/dist/tonconnect-ui.min.js',
               ];
               let lastError;
               for (const src of sources) {
