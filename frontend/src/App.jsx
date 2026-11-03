@@ -225,6 +225,11 @@ export default function App() {
   const [taskCountdown, setTaskCountdown] = useState({});
   const [referrals, setReferrals] = useState([]);
   const [withdrawals, setWithdrawals] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [adminHistory, setAdminHistory] = useState([]);
+  const [tonWallet, setTonWallet] = useState(null);
+  const tonConnectUIRef = useRef(null);
+  const tonProofVerifyingRef = useRef(false);
   const [depositNetwork, setDepositNetwork] = useState('bep20');
   const [depositHash, setDepositHash] = useState('');
   const [depositBusy, setDepositBusy] = useState(false);
@@ -1070,6 +1075,8 @@ showToast(data.error || 'Already checked in today');
       });
     }
     if (tab === 'wallet') {
+      api('/api/ton-wallet').then((d) => setTonWallet(d.wallet || null)).catch(() => {});
+      api('/api/history').then((d) => setHistory(d.history || [])).catch(() => {});
       api('/api/withdrawals', {
         method: 'POST',
         body: JSON.stringify({ user: window.Telegram?.WebApp?.initDataUnsafe?.user || tg?.initDataUnsafe?.user }),
@@ -1084,14 +1091,16 @@ showToast(data.error || 'Already checked in today');
   }, [tab, user?.is_admin]);
 
   const loadAdmin = async () => {
-    const [stats, wds, tks] = await Promise.all([
+    const [stats, wds, tks, activity] = await Promise.all([
       api('/api/admin/stats'),
       api(`/api/admin/withdrawals?status=${adminWdFilter || 'pending'}`),
       api('/api/admin/tasks'),
+      api('/api/admin/history'),
     ]);
     setAdminStats(stats);
     setAdminWithdrawals(wds.withdrawals || []);
     setAdminTasks(tks.tasks || []);
+    setAdminHistory(activity.history || []);
   };
 
   const loadAdminSettings = async () => {
@@ -1340,6 +1349,68 @@ showToast(data.error || 'Already checked in today');
   }, [tab, tasks]);
 
 
+  const loadHistory = async () => {
+    const data = await api('/api/history');
+    if (!data.error) setHistory(data.history || []);
+  };
+
+  const connectTonWallet = async () => {
+    try {
+      setWalletConnecting(true);
+      let ui = tonConnectUIRef.current;
+      if (!ui) {
+        const { TonConnectUI, CHAIN } = await import('@tonconnect/ui');
+        ui = new TonConnectUI({ manifestUrl: window.location.origin + '/tonconnect-manifest.json' });
+        ui.setConnectionNetwork(CHAIN.MAINNET);
+        ui.onStatusChange(async (wallet) => {
+          if (!wallet) return;
+          const item = wallet.connectItems?.tonProof;
+          if (!item || !('proof' in item) || tonProofVerifyingRef.current) return;
+          tonProofVerifyingRef.current = true;
+          try {
+            const result = await api('/api/ton-proof/verify', {
+              method: 'POST',
+              body: JSON.stringify({
+                address: wallet.account.address,
+                network: wallet.account.chain,
+                public_key: wallet.account.publicKey,
+                wallet_state_init: wallet.account.walletStateInit,
+                proof: item.proof,
+              }),
+            });
+            if (!result.success) throw new Error(result.error || 'TON ownership proof failed');
+            setTonWallet({ address_friendly: result.address, address_raw: result.address_raw });
+            showToast('TON wallet ownership verified');
+          } catch (e) {
+            showToast(String(e?.message || 'TON verification failed').slice(0, 100));
+            try { await ui.disconnect(); } catch (_) {}
+          } finally {
+            tonProofVerifyingRef.current = false;
+          }
+        });
+        tonConnectUIRef.current = ui;
+      }
+      if (ui.connected) {
+        await ui.disconnect();
+      }
+      const challenge = await api('/api/ton-proof/payload', { method: 'POST', body: '{}' });
+      if (!challenge.payload) throw new Error(challenge.error || 'Could not prepare TON wallet proof');
+      ui.setConnectRequestParameters({ state: 'ready', value: { tonProof: challenge.payload } });
+      await ui.openModal();
+    } catch (e) {
+      showToast(String(e?.message || 'TON wallet connection failed').slice(0, 100));
+    } finally {
+      setWalletConnecting(false);
+    }
+  };
+
+  const disconnectTonWallet = async () => {
+    try { if (tonConnectUIRef.current?.connected) await tonConnectUIRef.current.disconnect(); } catch (_) {}
+    await api('/api/ton-wallet/disconnect', { method: 'POST', body: '{}' });
+    setTonWallet(null);
+    showToast('TON wallet disconnected');
+  };
+
   const loadDeposits = async () => {
     const data = await api('/api/deposits');
     if (!data.error) setDepositData(data);
@@ -1358,6 +1429,7 @@ showToast(data.error || 'Already checked in today');
     if (data.success) {
       setDepositHash('');
       setDepositData((old) => ({ ...old, deposits: data.deposits || old.deposits, balances: data.balances || old.balances }));
+      await loadHistory();
       showToast('Verified: +' + data.amount + ' ' + (data.token || 'USDT'));
     } else {
       showToast(data.error || 'Verification failed');
@@ -1388,6 +1460,7 @@ user: tg?.initDataUnsafe?.user,
       setWdAmount('');
       loadUser();
       api('/api/withdrawals').then((d) => setWithdrawals(d.withdrawals || []));
+      await loadHistory();
     } else {
       showToast(data.error || 'Failed');
     }
@@ -2189,6 +2262,24 @@ const locked = !claimed && !current;
           </div>
 
           <div className="card">
+            <div className="card-title"><Icon name="ton" size={20} title="TON" /> TON Wallet Ownership</div>
+            {tonWallet?.address_friendly ? (
+              <div className="wallet-connected-box">
+                <div className="wc-status"><span className="wc-dot" /> TON ownership verified</div>
+                <div className="wc-addr">{tonWallet.address_friendly}</div>
+                <button className="btn btn-secondary" style={{ width: '100%', marginTop: 10 }} onClick={disconnectTonWallet}>Disconnect TON Wallet</button>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: '0.8rem', color: '#a0ffc0', marginBottom: 10 }}>Connect TON wallet and approve a TON Connect ownership proof. No transaction or token transfer is requested.</div>
+                <button className="btn btn-primary" style={{ width: '100%' }} onClick={connectTonWallet} disabled={walletConnecting}>
+                  <Icon name="ton" size={18} /> {walletConnecting ? 'Connecting…' : 'Connect TON Wallet'}
+                </button>
+              </>
+            )}
+          </div>
+
+          <div className="card">
             <div className="card-title"><Icon name="coins" size={16} /> Deposit</div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
               {['ton', 'bep20', 'trc20'].map((network) => (
@@ -2216,7 +2307,7 @@ const locked = !claimed && !current;
               Verified balance: <Icon name={depositNetwork === 'ton' ? 'ton' : 'usdt'} size={20} title={depositNetwork === 'ton' ? 'TON' : 'USDT'} /> {Number(depositData.balances?.[depositNetwork] || 0).toFixed(depositNetwork === 'ton' ? 9 : 6)}
             </div>
             <div style={{ fontSize: '0.72rem', color: '#888', marginTop: 5 }}>
-              {depositNetwork === 'ton' ? 'TON is checked on-chain, but sender-ownership proof is not enabled yet, so TON credits are blocked for safety.' : 'Server checks the on-chain recipient, amount, confirmations and that the sender matches your signature-verified wallet. Each hash can be credited once.'}
+              {depositNetwork === 'ton' ? 'TON sender must match your TON Connect signature-verified wallet. Connect your TON wallet above before submitting a deposit.' : 'Server checks the on-chain recipient, amount, confirmations and that the sender matches your signature-verified wallet. Each hash can be credited once.'}
             </div>
           </div>
 
@@ -2254,30 +2345,36 @@ const locked = !claimed && !current;
           </div>
 
           <div className="card">
-            <div className="card-title">History</div>
-            {withdrawals.length === 0 && <div style={{ color: '#666' }}>No requests yet</div>}
-            {withdrawals.map((w) => (
-              <div key={w.id} style={{ padding: '8px 0', borderBottom: '1px solid rgba(0,255,136,0.1)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{w.amount} HYPE</span>
-                  <span
-                    style={{
-                      color:
-                        w.status === 'approved'
-                          ? '#00ff88'
-                          : w.status === 'rejected'
-                          ? '#ff5566'
-                          : '#ffaa00',
-                    }}
-                  >
-                    {w.status}
-                  </span>
+            <div className="card-title"><Icon name="chart" size={16} /> Transaction History</div>
+            {history.length === 0 && <div style={{ color: '#777', fontSize: '0.85rem' }}>No deposit, swap or withdrawal activity yet.</div>}
+            {history.map((item) => {
+              const name = [item.first_name, item.last_name].filter(Boolean).join(' ') || (item.username ? '@' + item.username : 'User #' + item.user_id);
+              const assetIcon = String(item.asset || '').toUpperCase() === 'TON' ? 'ton' : String(item.asset || '').toUpperCase().includes('USDT') ? 'usdt' : 'hype';
+              const stamp = Number(item.created_at) * 1000;
+              return (
+                <div key={item.type + '-' + item.id} style={{ padding: '11px 0', borderBottom: '1px solid rgba(0,255,136,0.12)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
+                      <Icon name={assetIcon} size={22} title={item.asset} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: '0.86rem', fontWeight: 800 }}>{item.type === 'deposit' ? 'Deposit' : item.type === 'withdrawal' ? 'Withdrawal' : 'Swap'}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#9aa' }}>{name} {item.username ? '· @' + item.username : ''}</div>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontWeight: 800, color: item.type === 'deposit' ? '#00ff88' : '#e0ffe8' }}>
+                        {item.type === 'deposit' ? '+' : item.type === 'withdrawal' ? '−' : ''}{formatNum(item.amount, item.asset === 'TON' ? 9 : 10)} {item.asset}
+                      </div>
+                      {item.type === 'swap' && <div style={{ fontSize: '0.72rem', color: '#9aa' }}>→ {formatNum(item.to_amount, 10)} {item.to_asset}</div>}
+                      <div style={{ fontSize: '0.7rem', color: item.status === 'approved' || item.status === 'completed' ? '#00ff88' : item.status === 'rejected' ? '#ff6677' : '#ffaa00' }}>{item.status}</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#777', marginTop: 5 }}>{item.network} · {Number.isFinite(stamp) && stamp > 0 ? new Date(stamp).toLocaleString() : ''}</div>
+                  {item.tx_hash && <div style={{ fontSize: '0.68rem', color: '#667', overflowWrap: 'anywhere' }}>TX: {item.tx_hash}</div>}
+                  {item.type === 'withdrawal' && item.to_address && <div style={{ fontSize: '0.68rem', color: '#667', overflowWrap: 'anywhere' }}>To: {item.to_address}</div>}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: '#666', marginTop: 2 }}>
-                  {new Date(w.created_at * 1000).toLocaleString()}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -2287,7 +2384,7 @@ const locked = !claimed && !current;
         <div className="page">
           <h3 style={{ color: '#f0d878', marginBottom: 12 }}><Icon name="settings" size={16} /> Admin Panel</h3>
           <div className="admin-tabs">
-            {['stats', 'settings', 'users', 'referrals', 'withdrawals', 'tasks', 'broadcast'].map((t) => (
+            {['stats', 'activity', 'settings', 'users', 'referrals', 'withdrawals', 'tasks', 'broadcast'].map((t) => (
               <button
                 key={t}
                 className={`admin-tab ${adminTab === t ? 'active' : ''}`}
@@ -2297,6 +2394,25 @@ const locked = !claimed && !current;
               </button>
             ))}
           </div>
+
+          {adminTab === 'activity' && (
+            <div className="card">
+              <div className="card-title"><Icon name="chart" size={16} /> All User Transactions</div>
+              {adminHistory.length === 0 && <div style={{ color: '#777' }}>No transactions recorded yet.</div>}
+              {adminHistory.map((item) => {
+                const name = [item.first_name, item.last_name].filter(Boolean).join(' ') || (item.username ? '@' + item.username : 'User #' + item.user_id);
+                const icon = String(item.asset || '').toUpperCase() === 'TON' ? 'ton' : String(item.asset || '').toUpperCase().includes('USDT') ? 'usdt' : 'hype';
+                return <div key={item.type + '-' + item.id} style={{ padding: '10px 0', borderBottom: '1px solid rgba(0,255,136,0.12)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><Icon name={icon} size={21} /><div><div>{name}</div><div style={{ fontSize: '0.7rem', color: '#888' }}>@{item.username || item.user_id} · {item.type}</div></div></div>
+                    <div style={{ textAlign: 'right' }}><strong>{formatNum(item.amount, 10)} {item.asset}</strong>{item.type === 'swap' && <div style={{ fontSize: '0.72rem' }}>→ {formatNum(item.to_amount, 10)} {item.to_asset}</div>}<div style={{ color: item.status === 'completed' || item.status === 'approved' ? '#00ff88' : item.status === 'rejected' ? '#ff6677' : '#ffaa00', fontSize: '0.72rem' }}>{item.status}</div></div>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#777', marginTop: 4 }}>{item.network} · {new Date(Number(item.created_at) * 1000).toLocaleString()}</div>
+                  {item.tx_hash && <div style={{ fontSize: '0.68rem', color: '#667', overflowWrap: 'anywhere' }}>TX: {item.tx_hash}</div>}
+                </div>;
+              })}
+            </div>
+          )}
 
           {adminTab === 'stats' && adminStats && (
             <div className="card">
