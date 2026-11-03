@@ -337,6 +337,7 @@ async function ensureDepositSwapTables(db: D1Database) {
     error_code TEXT, error_message TEXT,
     created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')), updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
   )`).run();
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_deposit_swap_swap_tx_unique ON deposit_swap_orders(swap_tx_hash) WHERE swap_tx_hash IS NOT NULL AND swap_tx_hash <> ''").run();
 }
 
 async function ensureDepositTable(db: D1Database) {
@@ -344,6 +345,7 @@ async function ensureDepositTable(db: D1Database) {
 }
 async function ensureWithdrawalTxColumn(db: D1Database) {
   try { await db.prepare("ALTER TABLE withdrawals ADD COLUMN tx_hash TEXT NOT NULL DEFAULT ''").run(); } catch {}
+  try { await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_withdrawals_tx_hash_unique ON withdrawals(tx_hash) WHERE tx_hash IS NOT NULL AND tx_hash <> ''").run(); } catch {}
 }
 async function verifyHyperevmNativeTransfer(env: Bindings, txHashInput: string, recipientInput: string, minAmountInput: string, expectedSenderInput?: string) {
   const txHash = String(txHashInput || '').trim();
