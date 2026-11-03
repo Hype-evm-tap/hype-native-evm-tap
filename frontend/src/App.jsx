@@ -225,7 +225,7 @@ export default function App() {
   const [depositNetwork, setDepositNetwork] = useState('bep20');
   const [depositHash, setDepositHash] = useState('');
   const [depositBusy, setDepositBusy] = useState(false);
-  const [depositData, setDepositData] = useState({ deposits: [], balances: { bep20: 0, trc20: 0 }, wallets: {} });
+  const [depositData, setDepositData] = useState({ deposits: [], balances: { ton: 0, bep20: 0, trc20: 0 }, wallets: {} });
   const [energyLeft, setEnergyLeft] = useState(1000);
   const [resetAt, setResetAt] = useState(0);
   const [waitSec, setWaitSec] = useState(0);
@@ -1355,7 +1355,7 @@ showToast(data.error || 'Already checked in today');
     if (data.success) {
       setDepositHash('');
       setDepositData((old) => ({ ...old, deposits: data.deposits || old.deposits, balances: data.balances || old.balances }));
-      showToast('Verified: +' + data.amount + ' USDT');
+      showToast('Verified: +' + data.amount + ' ' + (data.token || 'USDT'));
     } else {
       showToast(data.error || 'Verification failed');
     }
@@ -2186,20 +2186,22 @@ const locked = !claimed && !current;
           </div>
 
           <div className="card">
-            <div className="card-title"><Icon name="coins" size={16} /> USDT Deposit</div>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-              {['bep20', 'trc20'].map((network) => (
+            <div className="card-title"><Icon name="coins" size={16} /> Deposit</div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+              {['ton', 'bep20', 'trc20'].map((network) => (
                 <button key={network} className={`admin-tab ${depositNetwork === network ? 'active' : ''}`} onClick={() => setDepositNetwork(network)}>
-                  USDT {network.toUpperCase()}
+                  {network === 'ton' ? 'TON / GRAM' : 'USDT ' + network.toUpperCase()}
                 </button>
               ))}
             </div>
-            <div style={{ fontSize: '0.8rem', color: '#a0ffc0', marginBottom: 6 }}>Send only USDT on {depositNetwork.toUpperCase()} network to this address:</div>
+            <div style={{ fontSize: '0.8rem', color: '#a0ffc0', marginBottom: 6 }}>
+              {depositNetwork === 'ton' ? 'Send native TON only (TON / GRAM uses this same TON address). Jettons are not accepted.' : 'Send only USDT on ' + depositNetwork.toUpperCase() + ' network to this address:'}
+            </div>
             <div style={{ padding: 10, borderRadius: 8, background: 'rgba(0,255,136,0.07)', wordBreak: 'break-all', fontSize: '0.78rem' }}>
-              {depositNetwork === 'bep20' ? '0xaaa40bd792bd26c1e5f6481b25ac1f8d4cf62f4a' : 'THcEQMCe1eyfajz7TyFUe8EmW2AQuCc1do'}
+              {depositNetwork === 'ton' ? 'UQBtBjwUwBXKsJuRr1UFdba_B1Rh8gXo0uFBzuT9-mVC17yl' : depositNetwork === 'bep20' ? '0xaaa40bd792bd26c1e5f6481b25ac1f8d4cf62f4a' : 'THcEQMCe1eyfajz7TyFUe8EmW2AQuCc1do'}
             </div>
             <button className="btn btn-secondary" style={{ width: '100%', marginTop: 8 }} onClick={() => {
-              const address = depositNetwork === 'bep20' ? '0xaaa40bd792bd26c1e5f6481b25ac1f8d4cf62f4a' : 'THcEQMCe1eyfajz7TyFUe8EmW2AQuCc1do';
+              const address = depositNetwork === 'ton' ? 'UQBtBjwUwBXKsJuRr1UFdba_B1Rh8gXo0uFBzuT9-mVC17yl' : depositNetwork === 'bep20' ? '0xaaa40bd792bd26c1e5f6481b25ac1f8d4cf62f4a' : 'THcEQMCe1eyfajz7TyFUe8EmW2AQuCc1do';
               navigator.clipboard?.writeText(address).then(() => showToast('Deposit address copied')).catch(() => showToast('Copy address manually'));
             }}>Copy Deposit Address</button>
             <input className="input" style={{ marginTop: 12 }} placeholder="Paste transaction hash" value={depositHash} onChange={(e) => setDepositHash(e.target.value.trim())} />
@@ -2207,9 +2209,11 @@ const locked = !claimed && !current;
               {depositBusy ? 'Checking blockchain…' : 'Verify Deposit'}
             </button>
             <div style={{ marginTop: 12, fontSize: '0.85rem', color: '#a0ffc0' }}>
-              Verified balance: {Number(depositData.balances?.[depositNetwork] || 0).toFixed(6)} USDT
+              Verified balance: {Number(depositData.balances?.[depositNetwork] || 0).toFixed(depositNetwork === 'ton' ? 9 : 6)} {depositNetwork === 'ton' ? 'TON' : 'USDT'}
             </div>
-            <div style={{ fontSize: '0.72rem', color: '#888', marginTop: 5 }}>Only confirmed USDT transfers to your wallet are accepted. Each transaction can be credited once.</div>
+            <div style={{ fontSize: '0.72rem', color: '#888', marginTop: 5 }}>
+              Server checks the real on-chain recipient, transaction success, amount and confirmations. Each hash can be credited only once.
+            </div>
           </div>
 
           <div className="card">
