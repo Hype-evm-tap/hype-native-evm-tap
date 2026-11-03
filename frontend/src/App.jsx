@@ -1653,6 +1653,21 @@ showToast(data.error || 'Already checked in today');
       } else {
         tonConnectUIRef.current = ui;
       }
+
+      // TON Connect needs an explicit Telegram return URL in Mini Apps.
+      // Use the bot's canonical Telegram link (not a referral startapp value),
+      // so returning from Tonkeeper does not alter referral attribution.
+      const botUsername = String(config?.bot_username || '').replace(/^@/, '').trim();
+      if (botUsername) {
+        ui.uiOptions = {
+          ...(ui.uiOptions || {}),
+          actionsConfiguration: {
+            ...(ui.uiOptions?.actionsConfiguration || {}),
+            twaReturnUrl: `https://t.me/${botUsername}`,
+          },
+        };
+      }
+
       // Restore a previously verified session without interrupting it.
       // If the wallet is connected but has no verified link in this app,
       // disconnect only the unverified session so a fresh TON proof can be requested.
