@@ -297,6 +297,31 @@ const [broadcastSending, setBroadcastSending] = useState(false);
   const tapInFlight = useRef(false);
   const pendingFlush = useRef(false);
 
+  const copyText = async (value) => {
+    const text = String(value ?? '');
+    if (!text) throw new Error('Nothing to copy');
+    try {
+      if (navigator.clipboard?.writeText && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (_) {}
+    const field = document.createElement('textarea');
+    field.value = text;
+    field.setAttribute('readonly', '');
+    field.style.position = 'fixed';
+    field.style.opacity = '0';
+    field.style.pointerEvents = 'none';
+    document.body.appendChild(field);
+    field.select();
+    field.setSelectionRange(0, field.value.length);
+    let copied = false;
+    try { copied = document.execCommand('copy'); } catch (_) {}
+    field.remove();
+    if (!copied) throw new Error('Copy unavailable; please copy manually');
+    return true;
+  };
+
   const showToast = (msg) => {
     setToast(msg);
     setTimeout(() => setToast(''), 2500);
@@ -1510,7 +1535,7 @@ showToast(data.error || 'Already checked in today');
           if (!window.__HYPE_TONCONNECT_LOAD_PROMISE__) {
             window.__HYPE_TONCONNECT_LOAD_PROMISE__ = (async () => {
               const sources = [
-                'https://unpkg.com/@tonconnect/ui@5.0.2/dist/tonconnect-ui.min.js',
+                'https://unpkg.com/@tonconnect/ui@5.0.1/dist/tonconnect-ui.min.js',
                 'https://cdn.jsdelivr.net/npm/@tonconnect/ui@5.0.2/dist/tonconnect-ui.min.js',
               ];
               let lastError;
@@ -2430,7 +2455,7 @@ const locked = !claimed && !current;
               className="btn btn-primary"
               style={{ width: '100%' }}
               onClick={() => {
-                navigator.clipboard?.writeText(inviteLink);
+                copyText(inviteLink).then(() => showToast('Invite link copied')).catch(() => showToast('Copy invite link manually'));
                 tg?.openTelegramLink?.(
                   `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent('Join Hype Token Tap to Earn!')}`
                 );
@@ -2613,7 +2638,7 @@ const locked = !claimed && !current;
             </div>
             <button className="btn btn-secondary" style={{ width: '100%', marginTop: 8 }} onClick={() => {
               const address = depositNetwork === 'ton' ? 'UQBtBjwUwBXKsJuRr1UFdba_B1Rh8gXo0uFBzuT9-mVC17yl' : depositNetwork === 'bep20' ? '0xaaa40bd792bd26c1e5f6481b25ac1f8d4cf62f4a' : depositNetwork === 'trc20' ? 'THcEQMCe1eyfajz7TyFUe8EmW2AQuCc1do' : '0x87Ad7Fe8Be9eeEa2E388F80f4C5fcF450E037463';
-              navigator.clipboard?.writeText(address).then(() => showToast('Deposit address copied')).catch(() => showToast('Copy address manually'));
+              copyText(address).then(() => showToast('Deposit address copied')).catch(() => showToast('Copy address manually'));
             }}>Copy Deposit Address</button>
             <input className="input" style={{ marginTop: 12 }} placeholder="Paste transaction hash" value={depositHash} onChange={(e) => setDepositHash(e.target.value.trim())} />
             <button className="btn btn-primary" style={{ width: '100%' }} onClick={verifyDeposit} disabled={depositBusy}>
