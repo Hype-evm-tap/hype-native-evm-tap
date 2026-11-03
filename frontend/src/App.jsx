@@ -1492,11 +1492,12 @@ showToast(data.error || 'Already checked in today');
     // TonConnectUI twice before React state has time to update.
     if (window.__HYPE_TONCONNECT_CONNECTING__) return;
     window.__HYPE_TONCONNECT_CONNECTING__ = true;
+    let activeTonUI = tonConnectUIRef.current || window.__HYPE_TONCONNECT_UI__ || null;
     try {
       setWalletConnecting(true);
       // TonConnectUI registers the global custom element "tc-root".
       // Keep one instance across React remounts to prevent duplicate registration.
-      let ui = tonConnectUIRef.current || window.__HYPE_TONCONNECT_UI__ || null;
+      let ui = activeTonUI;
       if (!ui) {
         // Load the official browser bundle outside Vite's module graph.
         // This avoids Solid/Vite interop errors such as "src is not a function".
@@ -1557,6 +1558,9 @@ showToast(data.error || 'Already checked in today');
           manifestUrl: window.location.origin + '/tonconnect-manifest.json',
           enableAndroidBackHandler: false,
         });
+        activeTonUI = ui;
+        tonConnectUIRef.current = ui;
+        window.__HYPE_TONCONNECT_UI__ = ui;
         ui.setConnectionNetwork('-239');
         ui.onStatusChange(async (wallet) => {
           if (!wallet) {
@@ -1645,7 +1649,34 @@ showToast(data.error || 'Already checked in today');
       ui.setConnectRequestParameters({ state: 'ready', value: { tonProof: challenge.payload } });
       await ui.openModal();
     } catch (e) {
-      showToast(String(e?.message || 'TON wallet connection failed').slice(0, 100));
+      // Some mobile wallet deep-link return paths can reject the modal promise
+      // after Tonkeeper has already approved and restored the connection.
+      // Treat that as success only when the server has verified this exact wallet.
+      const ui = activeTonUI || tonConnectUIRef.current || window.__HYPE_TONCONNECT_UI__ || null;
+      let recovered = false;
+      if (ui?.connected && ui.account?.address) {
+        try {
+          for (let attempt = 0; attempt < 5 && tonProofVerifyingRef.current; attempt += 1) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+          const saved = await api('/api/ton-wallet');
+          const linked = saved?.wallet;
+          if (linked?.address_raw && linked.address_raw === ui.account.address) {
+            setTonWallet({
+              address_friendly: linked.address_friendly,
+              address_raw: linked.address_raw,
+            });
+            showToast('TON wallet connected and verified');
+            recovered = true;
+          }
+        } catch (recoveryError) {
+          console.warn('TON wallet return recovery check failed:', recoveryError);
+        }
+      }
+      if (!recovered) {
+        console.error('TON Connect initialization/connection failed:', e);
+        showToast(String(e?.message || 'TON wallet connection failed').slice(0, 100));
+      }
     } finally {
       setWalletConnecting(false);
       window.__HYPE_TONCONNECT_CONNECTING__ = false;
