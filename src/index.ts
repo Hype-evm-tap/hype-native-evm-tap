@@ -13,6 +13,7 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { recoverMessageAddress } from 'viem';
 
 type Bindings = {
   DB: D1Database;
@@ -283,6 +284,54 @@ app.get('/api/config', async (c) => {
   return c.json({ walletConnectProjectId: id, bot_username: c.env.BOT_USERNAME || '' });
 });
 
+app.post('/api/wallet/challenge', async (c) => {
+  try {
+    const tgUser = c.get('tgUser');
+    const body = await c.req.json().catch(() => ({}));
+    const address = String(body.address || '').trim();
+    if (!/^0x[a-fA-F0-9]{40}$/.test(address)) return c.json({ error: 'Invalid EVM address' }, 400);
+    await c.env.DB.prepare(`CREATE TABLE IF NOT EXISTS wallet_signin_challenges (
+      user_id TEXT NOT NULL, address TEXT NOT NULL, nonce TEXT NOT NULL,
+      expires_at INTEGER NOT NULL, PRIMARY KEY (user_id, address)
+    )`).run();
+    const nonce = crypto.randomUUID();
+    const issuedAt = nowSec();
+    const expiresAt = issuedAt + 300;
+    const message = `HYPE App wallet sign-in\nTelegram User ID: ${tgUser.id}\nWallet: ${address}\nNonce: ${nonce}\nIssued At: ${new Date(issuedAt * 1000).toISOString()}\nThis signature only proves wallet ownership. It does not authorize transactions.`;
+    await c.env.DB.prepare('INSERT INTO wallet_signin_challenges (user_id, address, nonce, expires_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, address) DO UPDATE SET nonce = excluded.nonce, expires_at = excluded.expires_at')
+      .bind(String(tgUser.id), address.toLowerCase(), nonce, expiresAt).run();
+    return c.json({ message, expiresAt });
+  } catch (e: any) {
+    return c.json({ error: e?.message || 'Could not create sign-in challenge' }, 500);
+  }
+});
+
+app.post('/api/wallet/verify', async (c) => {
+  try {
+    const tgUser = c.get('tgUser');
+    const body = await c.req.json().catch(() => ({}));
+    const address = String(body.address || '').trim();
+    const signature = String(body.signature || '').trim();
+    const message = String(body.message || '');
+    if (!/^0x[a-fA-F0-9]{40}$/.test(address) || !/^0x[a-fA-F0-9]{130}$/.test(signature) || !message)
+      return c.json({ error: 'Invalid wallet signature request' }, 400);
+    const challenge = await c.env.DB.prepare('SELECT nonce, expires_at FROM wallet_signin_challenges WHERE user_id = ? AND address = ?')
+      .bind(String(tgUser.id), address.toLowerCase()).first<{ nonce: string; expires_at: number }>();
+    if (!challenge || Number(challenge.expires_at) < nowSec()) return c.json({ error: 'Sign-in request expired. Please reconnect.' }, 401);
+    if (!message.includes(`Telegram User ID: ${tgUser.id}`) || !message.includes(`Wallet: ${address}`) || !message.includes(`Nonce: ${challenge.nonce}`))
+      return c.json({ error: 'Sign-in message mismatch' }, 401);
+    const recovered = await recoverMessageAddress({ message, signature: signature as `0x${string}` });
+    if (recovered.toLowerCase() !== address.toLowerCase()) return c.json({ error: 'Wallet signature does not match address' }, 401);
+    await c.env.DB.batch([
+      c.env.DB.prepare('DELETE FROM wallet_signin_challenges WHERE user_id = ? AND address = ? AND nonce = ?').bind(String(tgUser.id), address.toLowerCase(), challenge.nonce),
+      c.env.DB.prepare('UPDATE users SET wallet_address = ? WHERE id = ?').bind(address, tgUser.id),
+    ]);
+    return c.json({ success: true, wallet_address: address });
+  } catch (e: any) {
+    return c.json({ error: e?.message || 'Wallet signature verification failed' }, 400);
+  }
+});
+
 app.get('/api/price', async (c) => {
   let price = 0;
   try {
@@ -325,8 +374,8 @@ app.post('/api/wallet', async (c) => {
     const tgUser = c.get('tgUser');
     await ensureUser(c.env.DB, c.env, tgUser, null);
     const addr = String(body.wallet_address || '').trim();
-    if (addr && !/^0x[a-fA-F0-9]{40}$/.test(addr)) return c.json({ error: 'Invalid EVM address' }, 400);
-    await c.env.DB.prepare('UPDATE users SET wallet_address = ? WHERE id = ?').bind(addr, tgUser.id).run();
+    if (addr) return c.json({ error: 'Wallet ownership must be verified with a signature. Please reconnect your wallet.' }, 403);
+    await c.env.DB.prepare('UPDATE users SET wallet_address = ? WHERE id = ?').bind('', tgUser.id).run();
     return c.json({ success: true, wallet_address: addr });
   } catch (e: any) {
     return c.json({ error: e?.message || 'Wallet save failed' }, 500);
