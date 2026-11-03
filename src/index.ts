@@ -88,25 +88,27 @@ async function setSetting(db: D1Database, key: string, value: string) {
 }
 
 async function getConfig(db: D1Database, env?: Bindings) {
-  let dayRewards: number[];
+  const safeNumber = (raw: string, fallback: number, min = 0, max = 1000000) => {
+    const value = Number(raw);
+    return Number.isFinite(value) && value >= min && value <= max ? value : fallback;
+  };
+  const defaults = [0.0000089, 0.000002, 0.000006, 0.000007, 0.0000079, 0.0000089, 0.0004];
+  let dayRewards = defaults;
   try {
-    dayRewards = JSON.parse(await getSetting(db, 'checkin_day_rewards'));
-    if (!Array.isArray(dayRewards) || dayRewards.length !== 7) throw new Error('bad');
-  } catch {
-    dayRewards = [0.0000089, 0.000002, 0.000006, 0.000007, 0.0000079, 0.0000089, 0.0004];
-  }
-  const cfg: any = {
-    tap_reward: parseFloat(await getConfiguredSetting(db, 'tap_reward', env?.TAP_REWARD)),
-    referral_reward: parseFloat(await getConfiguredSetting(db, 'referral_reward', env?.REFERRAL_REWARD)),
-    min_withdraw: parseFloat(await getConfiguredSetting(db, 'min_withdraw', env?.MIN_WITHDRAW)),
-    energy_max: parseFloat(await getConfiguredSetting(db, 'energy_max', env?.ENERGY_MAX)),
-    energy_cooldown: parseFloat(await getConfiguredSetting(db, 'energy_cooldown', env?.ENERGY_COOLDOWN_SEC)),
-    daily_checkin_reward: parseFloat(await getSetting(db, 'daily_checkin_reward')),
-    streak_bonus: parseFloat(await getSetting(db, 'streak_bonus')) || 0,
+    const parsed = JSON.parse(await getSetting(db, 'checkin_day_rewards'));
+    if (Array.isArray(parsed) && parsed.length === 7 && parsed.every((v) => Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 1000000)) dayRewards = parsed.map(Number);
+  } catch {}
+  return {
+    tap_reward: safeNumber(await getConfiguredSetting(db, 'tap_reward', env?.TAP_REWARD), 0.0000000695),
+    referral_reward: safeNumber(await getConfiguredSetting(db, 'referral_reward', env?.REFERRAL_REWARD), 0.00008526),
+    min_withdraw: safeNumber(await getConfiguredSetting(db, 'min_withdraw', env?.MIN_WITHDRAW), 2, 0.00000001),
+    energy_max: safeNumber(await getConfiguredSetting(db, 'energy_max', env?.ENERGY_MAX), 1000, 1),
+    energy_cooldown: safeNumber(await getConfiguredSetting(db, 'energy_cooldown', env?.ENERGY_COOLDOWN_SEC), 3600, 60, 604800),
+    daily_checkin_reward: safeNumber(await getSetting(db, 'daily_checkin_reward'), 0.0000089),
+    streak_bonus: safeNumber(await getSetting(db, 'streak_bonus'), 0),
     checkin_day_rewards: dayRewards,
     bot_username: env?.BOT_USERNAME || '',
   };
-  return cfg;
 }
 
 function computeCanCheckin(lastCheckinAt: number) {
@@ -685,6 +687,9 @@ app.delete('/api/admin/users/:id', async (c) => {
   const id = Number(c.req.param('id'));
   if (!Number.isSafeInteger(id) || id <= 0) return c.json({ error: 'Invalid user id' }, 400);
   if (id === c.get('tgUser').id || adminSet(c.env).has(id)) return c.json({ error: 'Cannot delete your own account or a configured administrator' }, 403);
+  const target = await c.env.DB.prepare('SELECT is_admin FROM users WHERE id = ?').bind(id).first<any>();
+  if (!target) return c.json({ error: 'User not found' }, 404);
+  if (Number(target.is_admin) === 1) return c.json({ error: 'Cannot delete an administrator account' }, 403);
   await c.env.DB.batch([
     c.env.DB.prepare('DELETE FROM user_tasks WHERE user_id = ?').bind(id),
     c.env.DB.prepare('DELETE FROM referrals WHERE referrer_id = ? OR referred_id = ?').bind(id, id),
