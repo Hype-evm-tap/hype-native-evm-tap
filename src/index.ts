@@ -305,11 +305,13 @@ const DEPOSIT_WALLETS = {
   ton: 'UQBtBjwUwBXKsJuRr1UFdba_B1Rh8gXo0uFBzuT9-mVC17yl',
   bep20: '0xaaa40bd792bd26c1e5f6481b25ac1f8d4cf62f4a',
   trc20: 'THcEQMCe1eyfajz7TyFUe8EmW2AQuCc1do',
+  ethereum: '0x87Ad7Fe8Be9eeEa2E388F80f4C5fcF450E037463',
 };
 const USDT_CONTRACTS = {
   bep20: '0x55d398326f99059fF775485246999027B3197955',
   trc20: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
 };
+const ETHEREUM_USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
 const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 
 async function ensureDepositTable(db: D1Database) {
@@ -499,6 +501,48 @@ async function verifyBep20Deposit(hash: string) {
   if (raw <= 0n) throw new Error('Deposit amount is zero.');
   return { amount: formatUnits(raw, 18), from: senders[0], to: DEPOSIT_WALLETS.bep20, token: 'USDT' };
 }
+async function verifyEthereumDeposit(hash: string, asset: 'eth' | 'usdc_eth') {
+  const rpc = async (method: string, params: any[]) => {
+    let lastError: any;
+    for (const endpoint of ['https://ethereum-rpc.publicnode.com', 'https://cloudflare-eth.com']) {
+      try {
+        const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+        if (!response.ok) throw new Error('Ethereum RPC unavailable');
+        const data: any = await response.json();
+        if (data.error) throw new Error('Ethereum could not verify this transaction');
+        return data.result;
+      } catch (error) { lastError = error; }
+    }
+    throw lastError || new Error('Ethereum RPC unavailable');
+  };
+  const receipt: any = await rpc('eth_getTransactionReceipt', [hash]);
+  if (!receipt) return { pending: true, error: 'Ethereum transaction not found yet. Check the hash and try again.' };
+  if (String(receipt.transactionHash || '').toLowerCase() !== hash.toLowerCase()) throw new Error('Ethereum transaction hash mismatch.');
+  if (receipt.status !== '0x1') throw new Error('Transaction failed on Ethereum.');
+  const blockNumber = Number(BigInt(receipt.blockNumber));
+  const latest = Number(BigInt(await rpc('eth_blockNumber', [])));
+  if (latest - blockNumber < 12) return { pending: true, error: 'Ethereum transaction is waiting for 12 confirmations.' };
+  const recipient = DEPOSIT_WALLETS.ethereum.toLowerCase();
+  if (asset === 'eth') {
+    const tx: any = await rpc('eth_getTransactionByHash', [hash]);
+    if (!tx || String(tx.to || '').toLowerCase() !== recipient) throw new Error('No native ETH transfer to the Ethereum deposit address was found.');
+    const raw = BigInt(String(tx.value || '0x0'));
+    if (raw <= 0n) throw new Error('ETH deposit amount is zero.');
+    return { amount: formatUnits(raw, 18), from: String(tx.from || '').toLowerCase(), to: DEPOSIT_WALLETS.ethereum, token: 'ETH' };
+  }
+  const target = recipient.replace(/^0x/, '').padStart(64, '0');
+  const logs = (receipt.logs || []).filter((entry: any) =>
+    String(entry.address || '').toLowerCase() === ETHEREUM_USDC.toLowerCase() &&
+    String(entry.topics?.[0] || '').toLowerCase() === TRANSFER_TOPIC &&
+    String(entry.topics?.[2] || '').toLowerCase() === '0x' + target
+  );
+  if (!logs.length) throw new Error('No USDC (Ethereum ERC20) transfer to the deposit address was found.');
+  const senders = [...new Set(logs.map((entry: any) => '0x' + String(entry.topics[1] || '').slice(-40).toLowerCase()))];
+  if (senders.length !== 1) throw new Error('Transaction contains transfers from multiple senders; it cannot be safely attributed to one wallet.');
+  const raw = logs.reduce((sum: bigint, entry: any) => sum + BigInt(entry.data || '0x0'), 0n);
+  if (raw <= 0n) throw new Error('USDC deposit amount is zero.');
+  return { amount: formatUnits(raw, 6), from: senders[0], to: DEPOSIT_WALLETS.ethereum, token: 'USDC' };
+}
 async function verifyTrc20Deposit(hash: string) {
   const infoResponse = await fetch('https://api.trongrid.io/wallet/gettransactioninfobyid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: hash }) });
   if (!infoResponse.ok) throw new Error('TRON transaction verification service unavailable.');
@@ -521,7 +565,7 @@ app.get('/api/deposits', async (c) => {
   await ensureDepositTable(c.env.DB);
   const { results } = await c.env.DB.prepare('SELECT id, network, tx_hash, amount, token, from_address, to_address, created_at FROM crypto_deposits WHERE user_id = ? ORDER BY id DESC LIMIT 30').bind(userId).all();
   const totals = await c.env.DB.prepare('SELECT network, SUM(CAST(amount AS REAL)) AS amount FROM crypto_deposits WHERE user_id = ? GROUP BY network').bind(userId).all();
-  const balances: any = { ton: 0, bep20: 0, trc20: 0 };
+  const balances: any = { ton: 0, bep20: 0, trc20: 0, eth: 0, usdc_eth: 0 };
   for (const row of (totals.results || []) as any[]) balances[row.network] = Number(row.amount) || 0;
   return c.json({ deposits: results || [], balances, wallets: DEPOSIT_WALLETS });
 });
@@ -529,8 +573,8 @@ app.post('/api/deposits/verify', async (c) => {
   try {
     const userId = c.get('tgUser').id, body = await c.req.json().catch(() => ({}));
     const network = String(body.network || '').toLowerCase(), hash = String(body.tx_hash || '').trim();
-    if (!['ton', 'bep20', 'trc20'].includes(network)) return c.json({ error: 'Choose TON/GRAM, USDT BEP20 or USDT TRC20.' }, 400);
-    const validHash = network === 'ton' ? !!tonHashHex(hash) : network === 'bep20' ? /^0x[a-fA-F0-9]{64}$/.test(hash) : /^[a-fA-F0-9]{64}$/.test(hash);
+    if (!['ton', 'bep20', 'trc20', 'eth', 'usdc_eth'].includes(network)) return c.json({ error: 'Choose TON/GRAM, USDT BEP20/TRC20, ETH or USDC Ethereum.' }, 400);
+    const validHash = network === 'ton' ? !!tonHashHex(hash) : (network === 'bep20' || network === 'eth' || network === 'usdc_eth') ? /^0x[a-fA-F0-9]{64}$/.test(hash) : /^[a-fA-F0-9]{64}$/.test(hash);
     if (!validHash) return c.json({ error: 'Enter a valid transaction hash.' }, 400);
     await ensureDepositTable(c.env.DB);
     const normalizedHash = network === 'ton' ? tonHashHex(hash) : hash.toLowerCase();
@@ -538,7 +582,7 @@ app.post('/api/deposits/verify', async (c) => {
     if (existing) return c.json({ error: 'This transaction has already been credited.' }, 409);
     const verified: any = network === 'ton'
       ? await verifyTonDeposit(hash, c.env.TONCENTER_API_KEY || '')
-      : network === 'bep20' ? await verifyBep20Deposit(normalizedHash) : await verifyTrc20Deposit(normalizedHash);
+      : network === 'bep20' ? await verifyBep20Deposit(normalizedHash) : network === 'trc20' ? await verifyTrc20Deposit(normalizedHash) : await verifyEthereumDeposit(normalizedHash, network as 'eth' | 'usdc_eth');
     if (verified.pending) return c.json({ pending: true, error: verified.error }, 202);
     // Sender ownership: require a previously signature-verified EVM wallet.
     // BSC and TRON use the same secp256k1 account key; the TRON address is
@@ -555,7 +599,7 @@ app.post('/api/deposits/verify', async (c) => {
     } else if (!/^0x[a-fA-F0-9]{40}$/.test(linkedEvm)) {
       return c.json({ error: 'Connect and sign your EVM wallet first. Sender ownership cannot be verified without a linked wallet.' }, 403);
     }
-    if (network === 'bep20' && String(verified.from || '').toLowerCase() !== linkedEvm.toLowerCase()) {
+    if ((network === 'bep20' || network === 'eth' || network === 'usdc_eth') && String(verified.from || '').toLowerCase() !== linkedEvm.toLowerCase()) {
       return c.json({ error: 'Sender wallet does not match your signature-verified wallet. No balance was credited.' }, 403);
     }
     if (network === 'trc20') {
