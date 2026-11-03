@@ -978,7 +978,7 @@ async function checkTelegramTaskMembership(db: D1Database, env: Bindings, userId
       return { error: 'This boost task is only available for Telegram Premium users', status: 403 };
     }
     if (!env.BOT_TOKEN) return { error: 'Telegram bot token is not configured', status: 503 };
-    const match = String(task.link || '').trim().match(/(?:https?:\/\/)?(?:www\.)?t\.me\/([A-Za-z0-9_]{5,})|^@([A-Za-z0-9_]{5,})$/i);
+    const match = String(task.link || '').trim().match(/(?:https?:\/\/)?(?:www\.)?t\.me\/(?:boost\/)?([A-Za-z0-9_]{5,})\/?(?:[?#].*)?$|^@([A-Za-z0-9_]{5,})$/i);
     const channel = match?.[1] ? `@${match[1]}` : match?.[2] ? `@${match[2]}` : '';
     if (!channel) return { error: 'Boost task link must be a public Telegram channel link or @username', status: 422 };
     const response = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/getUserChatBoosts?chat_id=${encodeURIComponent(channel)}&user_id=${userId}`);
@@ -1278,7 +1278,7 @@ app.post('/api/admin/tasks', async (c) => {
   const type = String(b.type || 'telegram').trim().toLowerCase();
   const link = String(b.link || '').trim().slice(0, 500);
   const reward = Number(b.reward);
-  const telegramChannel = /^(?:https?:\/\/)?(?:www\.)?t\.me\/[A-Za-z0-9_]{5,}\/?$|^@[A-Za-z0-9_]{5,}$/i.test(link);
+  const telegramChannel = /^(?:https?:\/\/)?(?:www\.)?t\.me\/(?:boost\/)?[A-Za-z0-9_]{5,}\/?$|^@[A-Za-z0-9_]{5,}$/i.test(link);
   const youtubeLink = /^(https?:\/\/)?(www\.)?(youtube\.com\/(channel\/|@|c\/|user\/|watch\?v=)|youtu\.be\/)[A-Za-z0-9_?&=.-]+/i.test(link);
   const validLink =
     ((type === 'telegram' || type === 'boost') && telegramChannel) ||
