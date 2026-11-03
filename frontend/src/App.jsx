@@ -276,7 +276,7 @@ export default function App() {
   const [adminReferrals, setAdminReferrals] = useState([]);
   const [editUserId, setEditUserId] = useState('');
   const [editUserData, setEditUserData] = useState({ balance: '', total_earned: '', total_taps: '', is_admin: false, invite_count: '' });
-  const [settingsForm, setSettingsForm] = useState({ tap_reward: '', referral_reward: '', min_withdraw: '', energy_max: '', energy_cooldown: '', daily_checkin_reward: '', streak_bonus: '0', day1: '0.0000089', day2: '0.000002', day3: '0.000006', day4: '0.000007', day5: '0.0000079', day6: '0.0000089', day7: '0.0004' });
+  const [settingsForm, setSettingsForm] = useState({ tap_reward: '', referral_reward: '', min_withdraw: '', energy_max: '', energy_cooldown: '', daily_checkin_reward: '', ad_reward: '0.0000007854', ads_enabled: true, streak_bonus: '0', day1: '0.0000089', day2: '0.000002', day3: '0.000006', day4: '0.000007', day5: '0.0000079', day6: '0.0000089', day7: '0.0004' });
   const [canCheckin, setCanCheckin] = useState(true);
   const [checkinWait, setCheckinWait] = useState(0);
   const [checkinBusy, setCheckinBusy] = useState(false);
@@ -297,6 +297,8 @@ const [broadcastSending, setBroadcastSending] = useState(false);
   const [streak, setStreak] = useState(0);
   const [streakTotalEarned, setStreakTotalEarned] = useState(0);
   const [checkinRewards, setCheckinRewards] = useState([0.0000089, 0.000002, 0.000006, 0.000007, 0.0000079, 0.0000089, 0.0004]);
+  const [adBusy, setAdBusy] = useState(false);
+  const [adStatus, setAdStatus] = useState('');
 
   const tapQueue = useRef(0);
   const tapTimer = useRef(null);
@@ -1175,6 +1177,8 @@ showToast(data.error || 'Already checked in today');
         energy_max: data.energy_max != null ? String(data.energy_max) : '',
         energy_cooldown: data.energy_cooldown != null ? String(data.energy_cooldown) : '',
         daily_checkin_reward: data.daily_checkin_reward != null ? formatNum(data.daily_checkin_reward, 12) : '',
+        ad_reward: data.ad_reward != null ? formatNum(data.ad_reward, 18) : '0.0000007854',
+        ads_enabled: data.ads_enabled !== false,
         streak_bonus: '0',
         day1: days[0] != null ? String(days[0]) : '',
         day2: days[1] != null ? String(days[1]) : '',
@@ -1195,6 +1199,8 @@ showToast(data.error || 'Already checked in today');
     if (settingsForm.energy_max !== '') body.energy_max = parseFloat(settingsForm.energy_max);
     if (settingsForm.energy_cooldown !== '') body.energy_cooldown = parseFloat(settingsForm.energy_cooldown);
     if (settingsForm.daily_checkin_reward !== '') body.daily_checkin_reward = parseFloat(settingsForm.daily_checkin_reward);
+    if (settingsForm.ad_reward !== '') body.ad_reward = parseFloat(settingsForm.ad_reward);
+    body.ads_enabled = Boolean(settingsForm.ads_enabled);
     body.streak_bonus = 0; // No additional 7-day bonus; Day 7 reward is the full reward.
     const dayRewards = [settingsForm.day1, settingsForm.day2, settingsForm.day3, settingsForm.day4, settingsForm.day5, settingsForm.day6, settingsForm.day7]
 
@@ -1300,6 +1306,37 @@ showToast(data.error || 'Already checked in today');
     if (adminTab === 'users') loadAdminLeaderboard();
     if (adminTab === 'referrals') loadAdminReferrals();
   }, [adminTab, tab, user]);
+
+  const watchRewardedAd = async () => {
+    if (adBusy) return;
+    setAdBusy(true);
+    setAdStatus('Preparing ad…');
+    try {
+      const session = await api('/api/ads/start', { method: 'POST', body: JSON.stringify({}) });
+      if (session.error || !session.ymid) throw new Error(session.error || 'Could not start ad session');
+      const showAd = window.show_12178167;
+      if (typeof showAd !== 'function') throw new Error('Monetag SDK is still loading. Please try again.');
+      const result = await showAd({ ymid: session.ymid, requestVar: 'tasks_watch_ad' });
+      if (result?.reward_event_type !== 'valued') {
+        setAdStatus('Ad was not monetized. No HYPE reward was added.');
+        return;
+      }
+      setAdStatus('Ad verified by Monetag. Waiting for secure reward confirmation…');
+      for (let i = 0; i < 12; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        const status = await api('/api/ads/status/' + encodeURIComponent(session.ymid));
+        if (status.status === 'credited') {
+          setAdStatus('Reward credited: +' + formatNum(status.reward, 18) + ' HYPE');
+          showToast('+' + formatNum(status.reward, 18) + ' HYPE ad reward');
+          await loadUser();
+          return;
+        }
+      }
+      setAdStatus('Monetag confirmed the ad; reward is pending server postback. Check balance shortly.');
+    } catch (e) {
+      setAdStatus(e?.message || 'Ad could not be shown. Please try again.');
+    } finally { setAdBusy(false); }
+  };
 
   const verifyTask = async (taskId) => {
     setTaskVerification((s) => ({ ...s, [taskId]: 'checking' }));
@@ -2344,6 +2381,18 @@ const locked = !claimed && !current;
             </button>
           </div>
 
+          {config?.ads_enabled !== false && (
+            <div className="card" style={{ marginBottom: 14 }}>
+              <div className="card-title"><Icon name="gift" size={17} /> Watch Ad & Earn HYPE</div>
+              <div style={{ fontSize: '0.82rem', color: '#9bb8a7', marginBottom: 12 }}>
+                Earn {formatNum(config?.ad_reward ?? 0.0000007854, 18)} HYPE after a monetized ad is confirmed.
+              </div>
+              <button className="btn btn-primary" style={{ width: '100%' }} disabled={adBusy} onClick={watchRewardedAd}>
+                {adBusy ? 'Loading ad…' : '▶ Watch Ad & Earn'}
+              </button>
+              {adStatus && <div className="task-verify-note" style={{ marginTop: 8 }}>{adStatus}</div>}
+            </div>
+          )}
           <h3 className="section-heading"><Icon name="gift" size={18} /> Tasks & Rewards</h3>
           {tasks.length === 0 && <div className="card">No tasks yet. Check back later.</div>}
           {tasks.filter((t) => {
@@ -2880,6 +2929,18 @@ const locked = !claimed && !current;
               <div className="card-title"><Icon name="settings" size={16} /> Live App Controls</div>
               <div style={{ fontSize: '0.78rem', color: '#888', marginBottom: 12 }}>
                 Yahan change karoge → turant pure app par apply hoga (naye taps / naye referrals par)
+              </div>
+              <div style={{ border: '1px solid rgba(0,255,136,.28)', borderRadius: 12, padding: 12, marginBottom: 16 }}>
+                <div className="card-title"><Icon name="gift" size={16} /> Monetag Rewarded Ads</div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: '0.85rem', margin: '10px 0' }}>
+                  <input type="checkbox" checked={Boolean(settingsForm.ads_enabled)} onChange={(e) => setSettingsForm({ ...settingsForm, ads_enabled: e.target.checked })} />
+                  Enable Watch Ad & Earn
+                </label>
+                <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}>Reward per valued ad (HYPE)</label>
+                <input className="input" type="number" min="0" step="any" value={settingsForm.ad_reward}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, ad_reward: e.target.value })}
+                  placeholder="0.0000007854" />
+                <div style={{ fontSize: '0.72rem', color: '#888', marginTop: 5 }}>Changes apply to new ad sessions. Only Monetag's verified valued postback credits the balance.</div>
               </div>
 
               <label style={{ fontSize: '0.8rem', color: '#a0ffc0' }}><Icon name="flame" size={14} /> Per Tap Points (HYPE)</label>
