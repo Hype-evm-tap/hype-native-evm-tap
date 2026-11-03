@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useTonConnectUI } from '@tonconnect/ui-react';
 
 const tg = window.Telegram?.WebApp;
 if (tg) {
@@ -211,7 +210,6 @@ function Icon({ name, className = '', size = 18, title = '' }) {
 }
 
 export default function App() {
-  const [tonConnectUI] = useTonConnectUI();
   const [tab, setTab] = useState('tap');
   const [user, setUser] = useState(null);
   const [config, setConfig] = useState(null);
@@ -232,7 +230,6 @@ export default function App() {
   const [adminHistory, setAdminHistory] = useState([]);
   const [tonWallet, setTonWallet] = useState(null);
   const tonConnectUIRef = useRef(null);
-  const tonStatusHandlerRef = useRef(false);
   const tonProofVerifyingRef = useRef(false);
   const [depositNetwork, setDepositNetwork] = useState('bep20');
   const [depositHash, setDepositHash] = useState('');
@@ -1491,22 +1488,86 @@ showToast(data.error || 'Already checked in today');
   };
 
   const connectTonWallet = async () => {
+    // A synchronous window-level lock prevents two taps/remounts from constructing
+    // TonConnectUI twice before React state has time to update.
     if (window.__HYPE_TONCONNECT_CONNECTING__) return;
     window.__HYPE_TONCONNECT_CONNECTING__ = true;
     try {
       setWalletConnecting(true);
-      const ui = tonConnectUI;
-      if (!ui) throw new Error('TON Connect provider is still initializing. Please retry.');
-      tonConnectUIRef.current = ui;
-
-      // The React adapter owns the single TonConnectUI instance. Register the
-      // proof handler once; never construct a second UI/custom-element instance.
-      if (!tonStatusHandlerRef.current) {
+      // TonConnectUI registers the global custom element "tc-root".
+      // Keep one instance across React remounts to prevent duplicate registration.
+      let ui = tonConnectUIRef.current || window.__HYPE_TONCONNECT_UI__ || null;
+      if (!ui) {
+        // Load the official browser bundle outside Vite's module graph.
+        // This avoids Solid/Vite interop errors such as "src is not a function".
+        if (!window.TON_CONNECT_UI?.TonConnectUI) {
+          // Share one loader promise across taps. Never remove/re-execute a bundle
+          // that may already have registered the global "tc-root" custom element.
+          if (!window.__HYPE_TONCONNECT_LOAD_PROMISE__) {
+            window.__HYPE_TONCONNECT_LOAD_PROMISE__ = (async () => {
+              const sources = [
+                'https://unpkg.com/@tonconnect/ui@5.0.2/dist/tonconnect-ui.min.js',
+                'https://cdn.jsdelivr.net/npm/@tonconnect/ui@5.0.2/dist/tonconnect-ui.min.js',
+              ];
+              let lastError;
+              for (const src of sources) {
+                try {
+                  await new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    const timeout = setTimeout(() => {
+                      script.remove();
+                      reject(new Error('TON Connect UI download timed out'));
+                    }, 12000);
+                    script.src = src;
+                    script.async = true;
+                    script.dataset.tonconnectUi = 'true';
+                    script.onload = () => {
+                      clearTimeout(timeout);
+                      if (window.TON_CONNECT_UI?.TonConnectUI) resolve();
+                      else reject(new Error('TON Connect bundle loaded but its API was not exposed; reload the app before retrying.'));
+                    };
+                    script.onerror = () => {
+                      clearTimeout(timeout);
+                      script.remove();
+                      reject(new Error('TON Connect UI CDN unavailable'));
+                    };
+                    document.head.appendChild(script);
+                  });
+                  if (window.TON_CONNECT_UI?.TonConnectUI) return true;
+                } catch (error) {
+                  lastError = error;
+                  // A successfully executed bundle can register tc-root even if
+                  // its global export is missing. Never load a second copy then.
+                  if (window.customElements?.get('tc-root')) throw error;
+                }
+              }
+              throw new Error(lastError?.message || 'Could not load TON Connect UI. Check your connection and retry.');
+            })();
+          }
+          await window.__HYPE_TONCONNECT_LOAD_PROMISE__;
+        }
+        const TonConnectUI = window.TON_CONNECT_UI?.TonConnectUI;
+        if (typeof TonConnectUI !== 'function') throw new Error('TON Connect UI failed to initialize. Reload the app and retry.');
+        // If a previous constructor partially registered tc-root then failed,
+        // creating another instance cannot recover and would throw the same error.
+        if (!window.__HYPE_TONCONNECT_UI__ && window.customElements?.get('tc-root')) {
+          throw new Error('TON Connect UI was partially initialized. Reload the app, then connect again.');
+        }
+        ui = new TonConnectUI({
+          manifestUrl: window.location.origin + '/tonconnect-manifest.json',
+          enableAndroidBackHandler: false,
+        });
+        ui.setConnectionNetwork('-239');
         ui.onStatusChange(async (wallet) => {
           if (!wallet) {
             setTonWallet(null);
             return;
           }
+
+          // TonConnect restores an existing session when Telegram returns from
+          // Tonkeeper. Restored Wallet objects do not contain connectItems/tonProof;
+          // that proof is only supplied during the original connection handshake.
+          // Do not disconnect a valid, previously verified wallet on session restore.
           const item = wallet.connectItems?.tonProof;
           if (!item || !('proof' in item)) {
             try {
@@ -1523,6 +1584,9 @@ showToast(data.error || 'Already checked in today');
             } catch (error) {
               console.warn('TON wallet session restore check failed:', error);
             }
+            // Keep the session connected; ask for a fresh proof only if it has
+            // never been verified by this app. Disconnecting here causes a loop
+            // every time Telegram restores the Mini App.
             showToast('TON wallet connected. Reconnect once to verify ownership.');
             return;
           }
@@ -1545,16 +1609,21 @@ showToast(data.error || 'Already checked in today');
             if (!result.success) throw new Error(result.error || 'TON ownership proof failed');
             setTonWallet({ address_friendly: result.address, address_raw: result.address_raw });
             showToast('TON wallet ownership verified');
-          } catch (error) {
-            showToast(String(error?.message || 'TON verification failed').slice(0, 100));
+          } catch (e) {
+            showToast(String(e?.message || 'TON verification failed').slice(0, 100));
             try { await ui.disconnect(); } catch (_) {}
           } finally {
             tonProofVerifyingRef.current = false;
           }
         });
-        tonStatusHandlerRef.current = true;
+        tonConnectUIRef.current = ui;
+        window.__HYPE_TONCONNECT_UI__ = ui;
+      } else {
+        tonConnectUIRef.current = ui;
       }
-
+      // Restore a previously verified session without interrupting it.
+      // If the wallet is connected but has no verified link in this app,
+      // disconnect only the unverified session so a fresh TON proof can be requested.
       if (ui.connected) {
         const saved = await api('/api/ton-wallet');
         if (saved?.wallet?.address_raw) {
@@ -1567,9 +1636,6 @@ showToast(data.error || 'Already checked in today');
         }
         await ui.disconnect();
       }
-
-      // Set TON mainnet before opening the connection modal.
-      ui.setConnectionNetwork('-239');
       ui.setConnectRequestParameters({ state: 'loading' });
       const challenge = await api('/api/ton-proof/payload', { method: 'POST', body: '{}' });
       if (!challenge.payload) {
@@ -1578,9 +1644,8 @@ showToast(data.error || 'Already checked in today');
       }
       ui.setConnectRequestParameters({ state: 'ready', value: { tonProof: challenge.payload } });
       await ui.openModal();
-    } catch (error) {
-      console.error('TON Connect initialization/connection failed:', error);
-      showToast(String(error?.message || 'TON wallet connection failed').slice(0, 100));
+    } catch (e) {
+      showToast(String(e?.message || 'TON wallet connection failed').slice(0, 100));
     } finally {
       setWalletConnecting(false);
       window.__HYPE_TONCONNECT_CONNECTING__ = false;
