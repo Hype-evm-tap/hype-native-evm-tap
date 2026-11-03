@@ -281,6 +281,7 @@ const [broadcastSending, setBroadcastSending] = useState(false);
   const [walletConnecting, setWalletConnecting] = useState(false);
   const [depositOrders, setDepositOrders] = useState([]);
   const [depositOrdersBusy, setDepositOrdersBusy] = useState(false);
+  const swapProviderRef = useRef(null);
   // Daily check-in streak (7-day)
   const [streak, setStreak] = useState(0);
   const [streakTotalEarned, setStreakTotalEarned] = useState(0);
@@ -1609,7 +1610,10 @@ showToast(data.error || 'Already checked in today');
     try {
       const [deposits, orders] = await Promise.all([api('/api/deposits'), api('/api/deposit-swaps')]);
       if (!deposits.error) setDepositData(deposits);
-      if (!orders.error) setDepositOrders(orders.orders || []);
+      if (!orders.error) {
+        setDepositOrders(orders.orders || []);
+        if (orders.hype_balance != null) setUser((old) => old ? { ...old, balance: Number(orders.hype_balance) || 0 } : old);
+      }
     } finally { setDepositOrdersBusy(false); }
   };
 
@@ -2448,8 +2452,8 @@ const locked = !claimed && !current;
             </div>
             <div className="card" style={{margin:0,padding:14}}>
               <div style={{fontSize:'0.7rem',color:'#9aa',fontWeight:800}}>VERIFIED DEPOSITS</div>
-              <div style={{fontSize:'1.25rem',fontWeight:900,color:'#fff',marginTop:7}}>{(Number(depositData.balances?.eth||0)+Number(depositData.balances?.bep20||0)+Number(depositData.balances?.trc20||0)+Number(depositData.balances?.ton||0)).toFixed(6)}</div>
-              <div style={{fontSize:'0.7rem',color:'#8a9b91'}}>Across ETH · USDT · TON (native units)</div>
+              <div style={{fontSize:'1.25rem',fontWeight:900,color:'#fff',marginTop:7}}>3 ASSETS</div>
+              <div style={{fontSize:'0.7rem',color:'#8a9b91'}}>ETH · USDT · TON deposits tracked</div>
             </div>
           </div>
           <div className="card">
