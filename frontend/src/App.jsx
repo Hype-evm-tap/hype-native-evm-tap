@@ -2567,9 +2567,11 @@ const locked = !claimed && !current;
               <div style={{fontWeight:800,fontSize:'0.82rem',marginBottom:9,color:'#d8ffe9'}}>Quote details</div>
               <div style={{display:'flex',justifyContent:'space-between',gap:8,fontSize:'0.73rem',marginBottom:7}}><span style={{color:'#9aa'}}>Minimum received</span><strong>{unitsToDecimal(swapQuote.estimate.toAmountMin || swapQuote.estimate.toAmount,Number(swapQuote.action?.toToken?.decimals || 18),8)} HYPE</strong></div>
               <div style={{display:'flex',justifyContent:'space-between',gap:8,fontSize:'0.73rem',marginBottom:7}}><span style={{color:'#9aa'}}>Route provider</span><strong>{swapQuote.toolDetails?.name || swapQuote.tool || 'LI.FI'}</strong></div>
-              {swapQuote.estimate.gasCosts?.map((fee,i)=><div key={i} style={{display:'flex',justifyContent:'space-between',gap:8,fontSize:'0.73rem',marginBottom:7}}><span style={{color:'#9aa'}}>Estimated network fee</span><strong>{fee.amountUSD ? '
+              {swapQuote.estimate.gasCosts?.map((fee,i)=><div key={i} style={{display:'flex',justifyContent:'space-between',gap:8,fontSize:'0.73rem',marginBottom:7}}><span style={{color:'#9aa'}}>Estimated network fee</span><strong>{fee.amountUSD ? `${fee.amountUSD}` : `${fee.amount || ''} ${fee.token?.symbol || ''}`}</strong></div>)}
+            </div>}
+          </div>
 
-          <div className="card">
+          <div className="card"
             <div className="card-title"><Icon name="ton" size={20} title="TON" /> TON Wallet Ownership</div>
             {tonWallet?.address_friendly ? (
               <div className="wallet-connected-box">
