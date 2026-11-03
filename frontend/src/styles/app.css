@@ -3606,3 +3606,20 @@ body {
 .hw-wallet-page .btn-primary{background:linear-gradient(100deg,#d5ff69,#a7f02e)!important;color:#15200a!important;border:0!important;font-weight:900!important;box-shadow:0 8px 22px rgba(179,255,57,.18)!important}
 .hw-wallet-page .input{background:rgba(8,12,31,.72)!important;border:1px solid rgba(160,145,255,.2)!important;color:#fff!important}
 @media(max-width:370px){.hw-total{font-size:2.1rem}.hw-actions{gap:7px}.hw-actions button{font-size:.76rem;min-height:102px}.hw-token-meta span{font-size:.66rem}}
+
+
+/* TON wallet connect panel in Swap — Mining GRAM inspired */
+.ton-swap-connect{margin:0 0 14px;padding:17px;border-radius:22px;border:1px solid rgba(170,150,255,.24);background:radial-gradient(ellipse at 10% 0%,rgba(112,74,211,.35),transparent 55%),linear-gradient(145deg,#211b4b,#10182c 75%);box-shadow:0 12px 28px rgba(5,4,24,.22);color:#f7f4ff}
+.ton-swap-top{display:flex;align-items:center;gap:11px}
+.ton-swap-mark{width:48px;height:48px;display:grid;place-items:center;border-radius:16px;background:rgba(75,155,255,.15);color:#45a9ff;border:1px solid rgba(75,155,255,.22)}
+.ton-swap-title{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}
+.ton-swap-title strong{font-size:1rem;font-weight:900}
+.ton-swap-title span{font-size:.7rem;line-height:1.35;color:#b1b0d1}
+.ton-swap-status{font-size:.58rem;letter-spacing:.06em;font-weight:900;padding:6px 8px;border-radius:20px;background:rgba(255,190,85,.12);color:#ffcf75;border:1px solid rgba(255,190,85,.2);white-space:nowrap}
+.ton-swap-status.is-connected{background:rgba(185,255,83,.12);color:#c6ff58;border-color:rgba(185,255,83,.24)}
+.ton-swap-connected{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px}
+.ton-swap-address{font-size:.8rem;color:#e2e0ff;overflow-wrap:anywhere}
+.ton-swap-button{width:100%;min-height:48px;margin-top:14px;border:0;border-radius:15px;background:linear-gradient(100deg,#d5ff69,#a7f02e);color:#17200c;font-weight:900;display:flex;align-items:center;justify-content:center;gap:9px}
+.ton-swap-button.secondary{width:auto;min-height:38px;margin:0;padding:0 14px;background:rgba(175,163,255,.13);border:1px solid rgba(175,163,255,.22);color:#e6e1ff}
+.ton-swap-note{font-size:.68rem;line-height:1.5;color:#aaa9cc;margin-top:11px}
+@media(max-width:380px){.ton-swap-top{gap:8px}.ton-swap-title span{font-size:.64rem}.ton-swap-status{font-size:.52rem;padding:5px 6px}}
