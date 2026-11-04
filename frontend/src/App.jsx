@@ -2713,7 +2713,10 @@ const locked = !claimed && !current;
             );
           })}
           <div className="card" style={{ marginTop: 14 }}>
-            <button className="btn btn-outline" style={{ width: '100%', marginBottom: 8 }} onClick={loadAdUsage}>\n              {adUsage.ads_remaining.toLocaleString()} Ads Left\n            </button>\n            <button className="btn btn-primary" style={{ width: '100%' }} disabled={adHistoryBusy} onClick={loadAdHistory}>
+            <button className="btn btn-outline" style={{ width: '100%', marginBottom: 8 }} onClick={loadAdUsage}>
+              {adUsage.ads_remaining.toLocaleString()} Ads Left
+            </button>
+            <button className="btn btn-primary" style={{ width: '100%' }} disabled={adHistoryBusy} onClick={loadAdHistory}>
               <Icon name="history" size={16} /> {adHistoryBusy ? 'Loading Ads History…' : 'View Ads Reward History'}
             </button>
             {adHistoryOpen && (
