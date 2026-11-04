@@ -1735,7 +1735,7 @@ showToast(data.error || 'Already checked in today');
     } else {
       setTaskVerification((s) => ({ ...s, [taskId]: 'not_member' }));
       setPendingTasks((p) => p.filter((id) => id !== taskId));
-      showToast(data.error || 'Channel join nahi mila. Join karke dobara try karein.');
+      showToast(data.error || (data.is_boost ? (data.message || 'Channel boost abhi verify nahi hua. Pehle channel ko boost karein.') : 'Channel join nahi mila. Join karke dobara try karein.'));
     }
   };
 
