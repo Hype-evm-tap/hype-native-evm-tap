@@ -847,8 +847,8 @@ const persistWallet = async (addr, walletProvider = null) => {
       const addr = await connectWalletConnect();
       if (!addr) throw new Error('WalletConnect returned no account');
       setEvmSessionAddress(addr);
-      const saved = await persistWallet(addr, wcProviderRef.current);
-      if (!saved) throw new Error('Wallet ownership verification failed. Please try again.');
+      // A wallet connection is enough to show the address in the app.
+      // Keep ownership verification separate for actions that require it.
       swapProviderRef.current = wcProviderRef.current;
       return true;
     };
@@ -857,9 +857,9 @@ const persistWallet = async (addr, walletProvider = null) => {
       const injected = await connectInjected();
       if (!injected) return false;
       setEvmSessionAddress(injected.address);
-      const saved = await persistWallet(injected.address, injected.provider);
-      if (saved) swapProviderRef.current = injected.provider;
-      return saved;
+      // Do not request a sign-in message just to connect the wallet.
+      swapProviderRef.current = injected.provider;
+      return true;
     };
 
     try {
@@ -1875,15 +1875,14 @@ showToast(data.error || 'Already checked in today');
           showToast('TON wallet is already connected');
           return;
         }
-        await ui.disconnect();
+        // Keep an existing TON Connect session even when it has not been
+        // ownership-verified by HYPE. Never disconnect it just to request proof.
+        setTonWallet({ address_friendly: ui.account?.address || '', address_raw: ui.account?.address || '', verified: false });
+        showToast('TON wallet already connected');
+        return;
       }
-      ui.setConnectRequestParameters({ state: 'loading' });
-      const challenge = await api('/api/ton-proof/payload', { method: 'POST', body: '{}' });
-      if (!challenge.payload) {
-        ui.setConnectRequestParameters(null);
-        throw new Error(challenge.error || 'Could not prepare TON wallet proof');
-      }
-      ui.setConnectRequestParameters({ state: 'ready', value: { tonProof: challenge.payload } });
+      // Connect-only mode: no sign-in message or tonProof prompt.
+      ui.setConnectRequestParameters(null);
       await ui.openModal();
     } catch (e) {
       // Some mobile wallet deep-link return paths can reject the modal promise
