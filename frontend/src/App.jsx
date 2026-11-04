@@ -3045,31 +3045,29 @@ const locked = !claimed && !current;
                 To: {shortAddr(connectedWallet)}
               </div>
             )}
-            {Number(user?.balance || 0) >= Number(config?.min_withdraw || 2) && (
-              <button
-                className="btn btn-primary"
-                type="button"
-                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-                disabled={withdrawBusy || walletConnecting}
-                onClick={() => {
-                  const payoutWallet = connectedWallet || wdWallet || user?.wallet_address || '';
-                  if (!/^0x[a-fA-F0-9]{40}$/.test(payoutWallet)
-                    && !/^0x[a-fA-F0-9]{40}$/.test(evmSessionAddress)) {
-                    setShowWalletChoices(true);
-                    return;
-                  }
-                  if (!wdAmount.trim()) {
-                    setWdAmount(formatNum(user?.balance, 10));
-                    showToast('Your full HYPE balance is selected. Tap Withdraw HYPE again to submit.');
-                    return;
-                  }
-                  requestWithdraw();
-                }}
-              >
-                <img src="/hype-icon.png" alt="" aria-hidden="true" style={{ width: 22, height: 22, display: 'block', flex: '0 0 22px', objectFit: 'contain', background: 'transparent', borderRadius: '50%', mixBlendMode: 'screen' }} />
-                {withdrawBusy ? 'Submitting…' : 'Withdraw HYPE'}
-              </button>
-            )}
+            <button
+              className="btn btn-primary"
+              type="button"
+              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+              disabled={withdrawBusy || walletConnecting || Number(user?.balance || 0) < Number(config?.min_withdraw || 2)}
+              onClick={() => {
+                const payoutWallet = connectedWallet || wdWallet || user?.wallet_address || '';
+                if (!/^0x[a-fA-F0-9]{40}$/.test(payoutWallet)
+                  && !/^0x[a-fA-F0-9]{40}$/.test(evmSessionAddress)) {
+                  setShowWalletChoices(true);
+                  return;
+                }
+                if (!wdAmount.trim()) {
+                  setWdAmount(formatNum(user?.balance, 10));
+                  showToast('Your full HYPE balance is selected. Tap Withdraw HYPE again to submit.');
+                  return;
+                }
+                requestWithdraw();
+              }}
+            >
+              <img src="/hype-icon.png" alt="" aria-hidden="true" style={{ width: 22, height: 22, display: 'block', flex: '0 0 22px', objectFit: 'contain', background: 'transparent', borderRadius: '50%', mixBlendMode: 'screen' }} />
+              {withdrawBusy ? 'Submitting…' : 'Withdraw HYPE'}
+            </button>
           </div>
 
           <div className="card">
