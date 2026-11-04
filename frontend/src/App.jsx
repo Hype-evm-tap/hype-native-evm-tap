@@ -764,12 +764,9 @@ const persistWallet = async (addr, walletProvider = null) => {
     // WalletConnect deep link so the exact pending session reaches the wallet.
     const provider = await EthereumProvider.init({
       projectId,
-      // Wallet ownership signing is chain-independent. Use Ethereum Mainnet
-      // as the broadly supported required namespace so Trust Wallet and other
-      // WalletConnect apps can establish a session; HyperEVM remains optional
-      // and is selected by the user when they perform a HYPE swap.
-      chains: [1],
-      optionalChains: [999, 56],
+      // HYPE is the native asset on HyperEVM. Request only HyperEVM;
+      // do not negotiate Ethereum Mainnet or BNB Chain for this wallet.
+      chains: [999],
       // Keep the WalletConnect explorer modal enabled inside Telegram too.
       // It lists all compatible wallet apps (including Trust Wallet) rather
       // than hard-routing every user to Trust Wallet.
@@ -780,8 +777,6 @@ const persistWallet = async (addr, walletProvider = null) => {
       events: ['chainChanged', 'accountsChanged', 'disconnect', 'session_delete'],
       rpcMap: {
         999: 'https://rpc.hyperliquid.xyz/evm',
-        1: 'https://ethereum.publicnode.com',
-        56: 'https://bsc-dataseed.binance.org',
       },
       metadata: {
         name: 'Hype Token',
@@ -985,15 +980,13 @@ const persistWallet = async (addr, walletProvider = null) => {
               const { default: EthereumProvider } = await import('@walletconnect/ethereum-provider');
               const restored = await EthereumProvider.init({
                 projectId,
-                chains: [1],
-                optionalChains: [999, 56],
+                // Restore sessions on HyperEVM only (chain ID 999).
+                chains: [999],
                 showQrModal: false,
                 methods: ['personal_sign', 'eth_accounts', 'eth_requestAccounts', 'eth_sendTransaction', 'eth_call', 'eth_getTransactionReceipt', 'eth_chainId'],
                 events: ['chainChanged', 'accountsChanged', 'disconnect', 'session_delete'],
                 rpcMap: {
                   999: 'https://rpc.hyperliquid.xyz/evm',
-                  1: 'https://ethereum.publicnode.com',
-                  56: 'https://bsc-dataseed.binance.org',
                 },
                 metadata: {
                   name: 'Hype Token',
