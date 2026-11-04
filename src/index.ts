@@ -1031,7 +1031,10 @@ app.get('/api/monetag/postback', async (c) => {
   const eventType = String(c.req.query('event_type') || '');
   const rewardType = String(c.req.query('reward_event_type') || '');
   const zoneId = String(c.req.query('zone_id') || '');
-  if (!/^hype_[1-9][0-9]*_[a-f0-9]{32}$/.test(ymid) || eventType !== 'impression' || rewardType !== 'valued' || zoneId !== '12178167') return c.text('Ignored', 200);
+  if (!/^hype_[1-9][0-9]*_[a-f0-9]{32}$/.test(ymid)) return c.text('Invalid ymid', 400);
+  if (zoneId !== '12178167') return c.text('Invalid zone_id', 400);
+  if (eventType !== 'impression' && eventType !== 'click') return c.text('Invalid event_type', 400);
+  if (rewardType !== 'valued') return c.text('Ignored: non-valued event', 200);
   await ensureAdTables(c.env.DB);
   const event = await c.env.DB.prepare("SELECT user_id, reward FROM monetag_ad_events WHERE ymid = ? AND status = 'pending'").bind(ymid).first<any>();
   if (!event) return c.text('Already processed or unknown event', 200);
