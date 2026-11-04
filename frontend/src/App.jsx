@@ -1198,10 +1198,20 @@ const persistWallet = async (addr, walletProvider = null) => {
         setTonWallet(null);
       }
     };
-    window.__HYPE_TONCONNECT_INIT_PROMISE__ = restoreTonConnect().catch((error) => {
-      console.warn('TON Connect session restore unavailable:', error);
-      window.__HYPE_TONCONNECT_INIT_PROMISE__ = null;
-    });
+    // React StrictMode mounts effects twice in development/Telegram WebView.
+    // Publish one shared promise before initialization starts so only one
+    // TonConnectUI instance can register the global tc-root element.
+    if (!window.__HYPE_TONCONNECT_INIT_PROMISE__) {
+      window.__HYPE_TONCONNECT_INIT_PROMISE__ = Promise.resolve().then(restoreTonConnect).catch((error) => {
+        console.warn('TON Connect session restore unavailable:', error);
+        if (!window.customElements?.get('tc-root')) {
+          window.__HYPE_TONCONNECT_LOAD_PROMISE__ = null;
+        }
+        window.__HYPE_TONCONNECT_INIT_PROMISE__ = null;
+        throw error;
+      });
+    }
+    window.__HYPE_TONCONNECT_INIT_PROMISE__.catch(() => {});
     return () => { disposed = true; };
   }, []);
 
@@ -2029,8 +2039,20 @@ showToast(data.error || 'Already checked in today');
         showToast('TON wallet already connected');
         return;
       }
-      // Connect-only mode: no sign-in message or tonProof prompt.
-      ui.setConnectRequestParameters(null);
+      // Ask the backend for a one-time TON Connect proof challenge.
+      // The wallet signs this challenge inside its own app; HYPE never asks
+      // for wallet passwords, seed phrases, or private keys.
+      const proofChallenge = await api('/api/ton-proof/payload', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      if (!proofChallenge?.payload) {
+        throw new Error(proofChallenge?.error || 'Could not prepare TON wallet verification');
+      }
+      ui.setConnectRequestParameters({
+        state: 'ready',
+        value: { tonProof: proofChallenge.payload },
+      });
       await ui.openModal();
     } catch (e) {
       // Some mobile wallet deep-link return paths can reject the modal promise
