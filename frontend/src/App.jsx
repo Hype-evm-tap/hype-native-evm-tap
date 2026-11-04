@@ -1861,9 +1861,8 @@ showToast(data.error || 'Already checked in today');
         };
       }
 
-      // Restore a previously verified session without interrupting it.
-      // If the wallet is connected but has no verified link in this app,
-      // disconnect only the unverified session so a fresh TON proof can be requested.
+      // Restore any existing TON Connect session without interrupting it.
+      // HYPE ownership verification remains separate from basic connection.
       if (ui.connected) {
         const saved = await api('/api/ton-wallet');
         if (saved?.wallet?.address_raw) {
@@ -1897,15 +1896,14 @@ showToast(data.error || 'Already checked in today');
           }
           const saved = await api('/api/ton-wallet');
           const linked = saved?.wallet;
-          if (linked?.address_raw && linked.address_raw === ui.account.address) {
-            setTonWallet({
-              address_friendly: linked.address_friendly,
-              address_raw: linked.address_raw,
-              verified: true,
-            });
-            showToast('TON wallet connected and verified');
-            recovered = true;
-          }
+          const isVerified = Boolean(linked?.address_raw && linked.address_raw === ui.account.address);
+          setTonWallet({
+            address_friendly: isVerified ? linked.address_friendly : ui.account.address,
+            address_raw: ui.account.address,
+            verified: isVerified,
+          });
+          showToast(isVerified ? 'TON wallet connected and verified' : 'TON wallet connected');
+          recovered = true;
         } catch (recoveryError) {
           console.warn('TON wallet return recovery check failed:', recoveryError);
         }
