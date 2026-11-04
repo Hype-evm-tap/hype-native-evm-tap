@@ -824,7 +824,16 @@ const persistWallet = async (addr, walletProvider = null) => {
     // Trust Wallet documents this /wc deep link for WalletConnect v2.
     if (inTelegram) {
       provider.on('display_uri', (uri) => {
-        if (uri) window.location.href = `https://link.trustwallet.com/wc?uri=${encodeURIComponent(uri)}`;
+        if (!uri) return;
+        const trustLink = `https://link.trustwallet.com/wc?uri=${encodeURIComponent(uri)}`;
+        // Telegram WebView cannot handle Trust's redirected trust:// scheme.
+        // openLink hands the HTTPS universal link to Android outside the WebView.
+        const telegramWebApp = window.Telegram?.WebApp;
+        if (typeof telegramWebApp?.openLink === 'function') {
+          telegramWebApp.openLink(trustLink);
+        } else {
+          window.open(trustLink, '_blank', 'noopener,noreferrer');
+        }
       });
     }
 
