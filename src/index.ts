@@ -1096,7 +1096,7 @@ async function checkTelegramTaskMembership(db: D1Database, env: Bindings, userId
       return { error: 'This boost task is only available for Telegram Premium users', status: 403 };
     }
     if (!env.BOT_TOKEN) return { error: 'Telegram bot token is not configured', status: 503 };
-    const match = String(task.link || '').trim().match(/(?:https?:\\/\\/)?(?:www\\.)?t\\.me\\/(?:boost\\/)?([A-Za-z0-9_]{5,})\\/?(?:[?#].*)?$|^@([A-Za-z0-9_]{5,})$/i);
+        const match = String(task.link || '').trim().match(/(?:https?:\/\/)?(?:www\.)?t\.me\/(?:boost\/)?([A-Za-z0-9_]{5,})\/?(?:[?#].*)?$|^@([A-Za-z0-9_]{5,})$/i);
     const channel = match?.[1] ? `@${match[1]}` : match?.[2] ? `@${match[2]}` : '';
     if (!channel) return { error: 'Boost task link must be a public Telegram channel link or @username (example: https://t.me/boost/channelname)', status: 422 };
 
