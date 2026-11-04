@@ -2887,10 +2887,19 @@ const locked = !claimed && !current;
 
           <div className="card" style={{marginTop:12}}>
             <div className="card-title"><Icon name="ton" size={18} /> TON Wallet for Swap / Deposit</div>
-            {tonWallet?.address_friendly ? <div className="wc-status"><span className="wc-dot" /> TON {tonWallet.verified ? 'Connected & Verified' : 'Connected'}<div className="wc-addr">{tonWallet.address_friendly}</div></div> :
+            {tonWallet?.address_friendly ? (
+              <div className="wc-status">
+                <span className="wc-dot" /> TON {tonWallet.verified ? 'Connected & Verified' : 'Connected'}
+                <div className="wc-addr">{tonWallet.address_friendly}</div>
+                <button className="btn btn-secondary" type="button" style={{width:'100%',marginTop:10}} onClick={disconnectTonWallet}>
+                  Disconnect TON Wallet
+                </button>
+              </div>
+            ) : (
               <button className="btn btn-secondary" style={{width:'100%'}} onClick={connectTonWallet} disabled={walletConnecting}>
                 <Icon name="ton" size={17} /> {walletConnecting ? 'Connecting…' : 'Connect TON Wallet'}
-              </button>}
+              </button>
+            )}
           </div>
 
           {/* Deposit — only 4 tokens */}
@@ -3060,7 +3069,7 @@ const locked = !claimed && !current;
                 <img src="/hype-icon.png" alt="" aria-hidden="true" style={{ width: 22, height: 22, display: 'block', flex: '0 0 22px', objectFit: 'contain', background: 'transparent', borderRadius: '50%', mixBlendMode: 'screen' }} />
                 {withdrawBusy ? 'Submitting…' : 'Withdraw HYPE'}
               </button>
-            )}}
+            )}
           </div>
 
           <div className="card">
