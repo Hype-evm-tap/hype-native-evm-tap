@@ -3658,3 +3658,18 @@ body, .app, .app-container {
 .miner-page .btn-primary, .btn-gold {
   box-shadow: 0 3px 10px rgba(185,157,90,.12) !important;
 }
+
+/* Stable lighting: disable decorative pulsing, flicker, shimmer and floating
+   effects across the app. Keep only the loading indicator animated. */
+*, *::before, *::after {
+  animation: none !important;
+}
+.loading-ring {
+  animation: loadingSpin 1.15s linear infinite !important;
+}
+.loading-ring-2 {
+  animation: loadingSpin 1.6s linear infinite reverse !important;
+}
+.loading-spinner {
+  animation: loadingSpin 1.15s linear infinite !important;
+}
