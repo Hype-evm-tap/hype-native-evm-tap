@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { TonConnectUI } from '@tonconnect/ui';
 
 const tg = window.Telegram?.WebApp;
 if (tg) {
@@ -376,6 +377,89 @@ const [broadcastSending, setBroadcastSending] = useState(false);
     } catch (e) {
       return { error: e?.message || 'Network error' };
     }
+  };
+
+  // Use the official TON Connect UI package and one shared instance. The
+  // wallet picker reads the official registry (Telegram Wallet + Tonkeeper).
+  const getTonConnectUI = async () => {
+    if (window.__HYPE_TONCONNECT_UI__) {
+      tonConnectUIRef.current = window.__HYPE_TONCONNECT_UI__;
+      return window.__HYPE_TONCONNECT_UI__;
+    }
+    if (!window.__HYPE_TONCONNECT_INIT_PROMISE__) {
+      window.__HYPE_TONCONNECT_INIT_PROMISE__ = Promise.resolve().then(() => {
+        const ui = new TonConnectUI({
+          manifestUrl: window.location.origin + '/tonconnect-manifest.json',
+          enableAndroidBackHandler: false,
+        });
+        ui.setConnectionNetwork('-239');
+        tonConnectUIRef.current = ui;
+        window.__HYPE_TONCONNECT_UI__ = ui;
+
+        ui.onStatusChange(async (wallet) => {
+          if (!wallet?.account?.address) {
+            setTonWallet(null);
+            return;
+          }
+          const address = String(wallet.account.address);
+          setTonWallet({ address_friendly: address, address_raw: address, verified: false });
+
+          const proofItem = wallet.connectItems?.tonProof;
+          if (proofItem && 'proof' in proofItem) {
+            if (tonProofVerifyingRef.current) return;
+            tonProofVerifyingRef.current = true;
+            try {
+              const result = await api('/api/ton-proof/verify', {
+                method: 'POST',
+                body: JSON.stringify({
+                  address: wallet.account.address,
+                  network: wallet.account.chain,
+                  public_key: wallet.account.publicKey || undefined,
+                  wallet_state_init: wallet.account.walletStateInit,
+                  proof: proofItem.proof,
+                }),
+              });
+              if (!result?.success) throw new Error(result?.error || 'TON ownership proof failed');
+              setTonWallet({ address_friendly: result.address, address_raw: result.address_raw, verified: true });
+              showToast('TON wallet ownership verified');
+            } catch (error) {
+              setTonWallet({ address_friendly: address, address_raw: address, verified: false });
+              showToast(String(error?.message || 'TON verification failed').slice(0, 120));
+            } finally {
+              tonProofVerifyingRef.current = false;
+            }
+            return;
+          }
+
+          // A restored session has no connectItems. Trust it only if the
+          // backend already verified this exact address in an earlier session.
+          try {
+            const saved = await api('/api/ton-wallet');
+            const linked = saved?.wallet;
+            if (linked?.address_raw && linked.address_raw === address) {
+              setTonWallet({
+                address_friendly: linked.address_friendly || address,
+                address_raw: address,
+                verified: true,
+              });
+            } else {
+              setTonWallet({ address_friendly: address, address_raw: address, verified: false });
+            }
+          } catch (_) {
+            setTonWallet({ address_friendly: address, address_raw: address, verified: false });
+          }
+        });
+        return ui;
+      }).catch((error) => {
+        window.__HYPE_TONCONNECT_UI__ = null;
+        window.__HYPE_TONCONNECT_INIT_PROMISE__ = null;
+        tonConnectUIRef.current = null;
+        throw error;
+      });
+    }
+    const ui = await window.__HYPE_TONCONNECT_INIT_PROMISE__;
+    tonConnectUIRef.current = ui;
+    return ui;
   };
 
   // Wait until Telegram WebApp initData is available (fixes empty header → Unauthorized)
@@ -1099,123 +1183,24 @@ const persistWallet = async (addr, walletProvider = null) => {
     };
   }, []);
 
-  // Initialize TON Connect on app startup so its persisted session can restore
-  // without requiring the user to press Connect again. A saved server link alone
-  // is never treated as a live connection; only TonConnect's active account counts.
+  // Initialize the shared TON Connect instance once and restore its session.
   useEffect(() => {
     let disposed = false;
-    const restoreTonConnect = async () => {
-      if (window.__HYPE_TONCONNECT_UI__) {
-        tonConnectUIRef.current = window.__HYPE_TONCONNECT_UI__;
-        return;
-      }
-      if (!window.__HYPE_TONCONNECT_LOAD_PROMISE__) {
-        window.__HYPE_TONCONNECT_LOAD_PROMISE__ = (async () => {
-          const sources = [
-            'https://unpkg.com/@tonconnect/ui@2.0.9/dist/tonconnect-ui.min.js',
-            'https://cdn.jsdelivr.net/npm/@tonconnect/ui@2.0.9/dist/tonconnect-ui.min.js',
-            'https://unpkg.com/@tonconnect/ui@2.2.4/dist/tonconnect-ui.min.js',
-            'https://cdn.jsdelivr.net/npm/@tonconnect/ui@2.2.4/dist/tonconnect-ui.min.js',
-          ];
-          let lastError;
-          for (const src of sources) {
-            try {
-              if (window.TON_CONNECT_UI?.TonConnectUI) return true;
-              if (window.customElements?.get('tc-root')) throw new Error('TON Connect UI is partially initialized');
-              await new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                const timeout = setTimeout(() => {
-                  script.remove();
-                  reject(new Error('TON Connect UI download timed out'));
-                }, 15000);
-                script.src = src;
-                script.async = true;
-                script.dataset.tonconnectUi = 'true';
-                script.onload = () => {
-                  clearTimeout(timeout);
-                  setTimeout(() => window.TON_CONNECT_UI?.TonConnectUI ? resolve() : reject(new Error('TON Connect UI did not initialize')), 50);
-                };
-                script.onerror = () => {
-                  clearTimeout(timeout);
-                  script.remove();
-                  reject(new Error('TON Connect UI CDN unavailable'));
-                };
-                document.head.appendChild(script);
-              });
-              if (window.TON_CONNECT_UI?.TonConnectUI) return true;
-            } catch (error) {
-              lastError = error;
-              if (window.customElements?.get('tc-root')) throw error;
-            }
-          }
-          throw lastError || new Error('Could not load TON Connect UI');
-        })();
-      }
-      await window.__HYPE_TONCONNECT_LOAD_PROMISE__;
-      if (disposed || window.__HYPE_TONCONNECT_UI__) return;
-      const TonConnectUI = window.TON_CONNECT_UI?.TonConnectUI;
-      if (typeof TonConnectUI !== 'function') throw new Error('TON Connect UI unavailable');
-      const ui = new TonConnectUI({
-        manifestUrl: window.location.origin + '/tonconnect-manifest.json',
-        enableAndroidBackHandler: false,
-      });
-      ui.setConnectionNetwork('-239');
-      tonConnectUIRef.current = ui;
-      window.__HYPE_TONCONNECT_UI__ = ui;
-      ui.onStatusChange(async (wallet) => {
-        if (!wallet?.account?.address) {
-          setTonWallet(null);
-          return;
-        }
-        const address = String(wallet.account.address);
-        let linked = null;
-        try {
-          const saved = await api('/api/ton-wallet');
-          if (saved?.wallet?.address_raw === address) linked = saved.wallet;
-        } catch (_) {}
-        if (!disposed) {
-          setTonWallet({
-            address_friendly: linked?.address_friendly || address,
-            address_raw: address,
-            verified: Boolean(linked),
-          });
-        }
-      });
-      // TonConnectUI restores its persisted session internally; this also
-      // covers clients that emit status before the React listener is attached.
-      if (ui.connected && ui.account?.address) {
-        const address = String(ui.account.address);
-        let linked = null;
-        try {
-          const saved = await api('/api/ton-wallet');
-          if (saved?.wallet?.address_raw === address) linked = saved.wallet;
-        } catch (_) {}
-        if (!disposed) setTonWallet({
-          address_friendly: linked?.address_friendly || address,
+    getTonConnectUI().then(async (ui) => {
+      if (disposed || !ui?.connected || !ui.account?.address) return;
+      const address = String(ui.account.address);
+      const saved = await api('/api/ton-wallet');
+      const linked = saved?.wallet;
+      if (!disposed) {
+        setTonWallet({
+          address_friendly: linked?.address_raw === address ? (linked.address_friendly || address) : address,
           address_raw: address,
-          verified: Boolean(linked),
+          verified: Boolean(linked?.address_raw && linked.address_raw === address),
         });
-      } else if (!disposed) {
-        setTonWallet(null);
       }
-    };
-    // React StrictMode mounts effects twice in development/Telegram WebView.
-    // Publish one shared promise before initialization starts so only one
-    // TonConnectUI instance can register the global tc-root element.
-    if (!window.__HYPE_TONCONNECT_INIT_PROMISE__) {
-      window.__HYPE_TONCONNECT_INIT_PROMISE__ = Promise.resolve().then(restoreTonConnect).catch((error) => {
-        console.warn('TON Connect session restore unavailable:', error);
-        if (!window.customElements?.get('tc-root')) {
-          window.__HYPE_TONCONNECT_LOAD_PROMISE__ = null;
-        }
-        window.__HYPE_TONCONNECT_INIT_PROMISE__ = null;
-        throw error;
-      });
-    }
-    window.__HYPE_TONCONNECT_INIT_PROMISE__.catch(() => {});
+    }).catch((error) => console.warn('TON Connect initialization failed:', error));
     return () => { disposed = true; };
   }, []);
-
 
   const doCheckin = async () => {
     // Prevent duplicate requests while a claim is being processed.
@@ -1841,175 +1826,11 @@ showToast(data.error || 'Already checked in today');
   };
 
   const connectTonWallet = async () => {
-    // A synchronous window-level lock prevents two taps/remounts from constructing
-    // TonConnectUI twice before React state has time to update.
     if (window.__HYPE_TONCONNECT_CONNECTING__) return;
     window.__HYPE_TONCONNECT_CONNECTING__ = true;
-    let activeTonUI = tonConnectUIRef.current || window.__HYPE_TONCONNECT_UI__ || null;
+    setWalletConnecting(true);
     try {
-      setWalletConnecting(true);
-      if (!activeTonUI && window.__HYPE_TONCONNECT_INIT_PROMISE__) {
-        await window.__HYPE_TONCONNECT_INIT_PROMISE__.catch(() => {});
-        activeTonUI = tonConnectUIRef.current || window.__HYPE_TONCONNECT_UI__ || null;
-      }
-      // TonConnectUI registers the global custom element "tc-root".
-      // Keep one instance across React remounts to prevent duplicate registration.
-      let ui = activeTonUI;
-      if (!ui) {
-        // Load the official browser bundle outside Vite's module graph.
-        // This avoids Solid/Vite interop errors such as "src is not a function".
-        if (!window.TON_CONNECT_UI?.TonConnectUI) {
-          // Share one loader promise across taps. Never remove/re-execute a bundle
-          // that may already have registered the global "tc-root" custom element.
-          if (!window.__HYPE_TONCONNECT_LOAD_PROMISE__) {
-            window.__HYPE_TONCONNECT_LOAD_PROMISE__ = (async () => {
-              // Prefer 2.x UMD builds — 5.x often triggers "src is not a function"
-              // inside Telegram WebView / Vite Solid interop.
-              const sources = [
-                'https://unpkg.com/@tonconnect/ui@2.0.9/dist/tonconnect-ui.min.js',
-                'https://cdn.jsdelivr.net/npm/@tonconnect/ui@2.0.9/dist/tonconnect-ui.min.js',
-                'https://unpkg.com/@tonconnect/ui@2.2.4/dist/tonconnect-ui.min.js',
-                'https://cdn.jsdelivr.net/npm/@tonconnect/ui@2.2.4/dist/tonconnect-ui.min.js',
-              ];
-              let lastError;
-              for (const src of sources) {
-                try {
-                  // Skip if a previous failed attempt already registered tc-root
-                  if (window.customElements?.get('tc-root') && !window.TON_CONNECT_UI?.TonConnectUI) {
-                    throw new Error('TON Connect UI was partially initialized. Fully close Telegram and reopen the Mini App.');
-                  }
-                  await new Promise((resolve, reject) => {
-                    // Re-use an existing script tag if present
-                    const existing = document.querySelector('script[data-tonconnect-ui="true"]');
-                    if (existing && window.TON_CONNECT_UI?.TonConnectUI) {
-                      resolve();
-                      return;
-                    }
-                    const script = document.createElement('script');
-                    const timeout = setTimeout(() => {
-                      script.remove();
-                      reject(new Error('TON Connect UI download timed out'));
-                    }, 15000);
-                    script.src = src;
-                    script.async = true;
-                    script.dataset.tonconnectUi = 'true';
-                    script.onload = () => {
-                      clearTimeout(timeout);
-                      // Give the UMD bundle a tick to attach globals
-                      setTimeout(() => {
-                        if (window.TON_CONNECT_UI?.TonConnectUI) resolve();
-                        else reject(new Error('TON Connect bundle loaded but its API was not exposed; reload the app before retrying.'));
-                      }, 50);
-                    };
-                    script.onerror = () => {
-                      clearTimeout(timeout);
-                      script.remove();
-                      reject(new Error('TON Connect UI CDN unavailable'));
-                    };
-                    document.head.appendChild(script);
-                  });
-                  if (window.TON_CONNECT_UI?.TonConnectUI) return true;
-                } catch (error) {
-                  lastError = error;
-                  // A successfully executed bundle can register tc-root even if
-                  // its global export is missing. Never load a second copy then.
-                  if (window.customElements?.get('tc-root')) throw error;
-                }
-              }
-              throw new Error(lastError?.message || 'Could not load TON Connect UI. Check your connection and retry.');
-            })();
-          }
-          await window.__HYPE_TONCONNECT_LOAD_PROMISE__;
-        }
-        const TonConnectUI = window.TON_CONNECT_UI?.TonConnectUI;
-        if (typeof TonConnectUI !== 'function') {
-          // Clear the broken promise so a full page reload can retry cleanly
-          window.__HYPE_TONCONNECT_LOAD_PROMISE__ = null;
-          throw new Error('TON Connect UI failed to initialize. Fully close Telegram Mini App and reopen.');
-        }
-        // If a previous constructor partially registered tc-root then failed,
-        // creating another instance cannot recover and would throw the same error.
-        if (!window.__HYPE_TONCONNECT_UI__ && window.customElements?.get('tc-root')) {
-          throw new Error('TON Connect UI was partially initialized. Fully close Telegram, then open the Mini App again.');
-        }
-        ui = new TonConnectUI({
-          manifestUrl: window.location.origin + '/tonconnect-manifest.json',
-          enableAndroidBackHandler: false,
-        });
-        activeTonUI = ui;
-        tonConnectUIRef.current = ui;
-        window.__HYPE_TONCONNECT_UI__ = ui;
-        ui.setConnectionNetwork('-239');
-        ui.onStatusChange(async (wallet) => {
-          if (!wallet) {
-            setTonWallet(null);
-            return;
-          }
-          const liveTonAddress = String(wallet.account?.address || '');
-          if (liveTonAddress) setTonWallet({ address_friendly: liveTonAddress, address_raw: liveTonAddress, verified: false });
-
-          // TonConnect restores an existing session when Telegram returns from
-          // Tonkeeper. Restored Wallet objects do not contain connectItems/tonProof;
-          // that proof is only supplied during the original connection handshake.
-          // Do not disconnect a valid, previously verified wallet on session restore.
-          const item = wallet.connectItems?.tonProof;
-          if (!item || !('proof' in item)) {
-            try {
-              const saved = await api('/api/ton-wallet');
-              const linked = saved?.wallet;
-              const walletAddress = String(wallet.account?.address || '');
-              if (linked?.address_raw && linked.address_raw === walletAddress) {
-                setTonWallet({
-                  address_friendly: linked.address_friendly,
-                  address_raw: linked.address_raw,
-                  verified: true,
-                });
-                return;
-              }
-            } catch (error) {
-              console.warn('TON wallet session restore check failed:', error);
-            }
-            // Keep the session connected; ask for a fresh proof only if it has
-            // never been verified by this app. Disconnecting here causes a loop
-            // every time Telegram restores the Mini App.
-            showToast('TON wallet connected. Ownership verification pending.');
-            return;
-          }
-
-          if (tonProofVerifyingRef.current) return;
-          tonProofVerifyingRef.current = true;
-          try {
-            const walletStateInit = wallet.account?.walletStateInit;
-            if (!walletStateInit) throw new Error('TON wallet did not provide wallet state. Reconnect and approve the proof.');
-            const result = await api('/api/ton-proof/verify', {
-              method: 'POST',
-              body: JSON.stringify({
-                address: wallet.account.address,
-                network: wallet.account.chain,
-                public_key: wallet.account.publicKey || undefined,
-                wallet_state_init: walletStateInit,
-                proof: item.proof,
-              }),
-            });
-            if (!result.success) throw new Error(result.error || 'TON ownership proof failed');
-            setTonWallet({ address_friendly: result.address, address_raw: result.address_raw, verified: true });
-            showToast('TON wallet ownership verified');
-          } catch (e) {
-            showToast(String(e?.message || 'TON verification failed').slice(0, 100));
-            try { await ui.disconnect(); } catch (_) {}
-          } finally {
-            tonProofVerifyingRef.current = false;
-          }
-        });
-        tonConnectUIRef.current = ui;
-        window.__HYPE_TONCONNECT_UI__ = ui;
-      } else {
-        tonConnectUIRef.current = ui;
-      }
-
-      // TON Connect needs an explicit Telegram return URL in Mini Apps.
-      // Use the bot's canonical Telegram link (not a referral startapp value),
-      // so returning from Tonkeeper does not alter referral attribution.
+      const ui = await getTonConnectUI();
       const botUsername = String(config?.bot_username || '').replace(/^@/, '').trim();
       if (botUsername) {
         ui.uiOptions = {
@@ -2021,33 +1842,29 @@ showToast(data.error || 'Already checked in today');
         };
       }
 
-      // Restore any existing TON Connect session without interrupting it.
-      // HYPE ownership verification remains separate from basic connection.
-      if (ui.connected) {
+      // Reuse a previously verified session; otherwise reconnect with a fresh
+      // ton_proof challenge so the backend can verify the current wallet.
+      if (ui.connected && ui.account?.address) {
         const saved = await api('/api/ton-wallet');
-        if (saved?.wallet?.address_raw) {
+        if (saved?.wallet?.address_raw === ui.account.address) {
           setTonWallet({
-            address_friendly: saved.wallet.address_friendly,
-            address_raw: saved.wallet.address_raw,
+            address_friendly: saved.wallet.address_friendly || ui.account.address,
+            address_raw: ui.account.address,
             verified: true,
           });
-          showToast('TON wallet is already connected');
+          showToast('TON wallet is already connected and verified');
           return;
         }
-        // Keep an existing TON Connect session even when it has not been
-        // ownership-verified by HYPE. Never disconnect it just to request proof.
-        setTonWallet({ address_friendly: ui.account?.address || '', address_raw: ui.account?.address || '', verified: false });
-        showToast('TON wallet already connected');
-        return;
+        await ui.disconnect();
       }
-      // Ask the backend for a one-time TON Connect proof challenge.
-      // The wallet signs this challenge inside its own app; HYPE never asks
-      // for wallet passwords, seed phrases, or private keys.
+
+      ui.setConnectRequestParameters({ state: 'loading' });
       const proofChallenge = await api('/api/ton-proof/payload', {
         method: 'POST',
         body: JSON.stringify({}),
       });
       if (!proofChallenge?.payload) {
+        ui.setConnectRequestParameters(null);
         throw new Error(proofChallenge?.error || 'Could not prepare TON wallet verification');
       }
       ui.setConnectRequestParameters({
@@ -2055,35 +1872,9 @@ showToast(data.error || 'Already checked in today');
         value: { tonProof: proofChallenge.payload },
       });
       await ui.openModal();
-    } catch (e) {
-      // Some mobile wallet deep-link return paths can reject the modal promise
-      // after Tonkeeper has already approved and restored the connection.
-      // Treat that as success only when the server has verified this exact wallet.
-      const ui = activeTonUI || tonConnectUIRef.current || window.__HYPE_TONCONNECT_UI__ || null;
-      let recovered = false;
-      if (ui?.connected && ui.account?.address) {
-        try {
-          for (let attempt = 0; attempt < 5 && tonProofVerifyingRef.current; attempt += 1) {
-            await new Promise(resolve => setTimeout(resolve, 300));
-          }
-          const saved = await api('/api/ton-wallet');
-          const linked = saved?.wallet;
-          const isVerified = Boolean(linked?.address_raw && linked.address_raw === ui.account.address);
-          setTonWallet({
-            address_friendly: isVerified ? linked.address_friendly : ui.account.address,
-            address_raw: ui.account.address,
-            verified: isVerified,
-          });
-          showToast(isVerified ? 'TON wallet connected and verified' : 'TON wallet connected');
-          recovered = true;
-        } catch (recoveryError) {
-          console.warn('TON wallet return recovery check failed:', recoveryError);
-        }
-      }
-      if (!recovered) {
-        console.error('TON Connect initialization/connection failed:', e);
-        showToast(String(e?.message || 'TON wallet connection failed').slice(0, 100));
-      }
+    } catch (error) {
+      console.warn('TON wallet connection failed:', error);
+      showToast(String(error?.message || 'TON wallet connection failed').slice(0, 140));
     } finally {
       setWalletConnecting(false);
       window.__HYPE_TONCONNECT_CONNECTING__ = false;
@@ -2143,7 +1934,7 @@ showToast(data.error || 'Already checked in today');
     const amount = Number(wdAmount);
     const minWithdraw = Number(config?.min_withdraw || 2);
     const availableBalance = Number(user?.balance || 0);
-    const payoutWallet = connectedWallet || wdWallet || user?.wallet_address || '';
+    let payoutWallet = connectedWallet || wdWallet || user?.wallet_address || '';
     if (!Number.isFinite(amount) || amount <= 0) {
       showToast('Enter the HYPE amount to withdraw');
       return;
@@ -2156,13 +1947,19 @@ showToast(data.error || 'Already checked in today');
       showToast('Withdrawal amount exceeds your HYPE balance');
       return;
     }
-    if (!/^0x[a-fA-F0-9]{40}$/.test(payoutWallet)) {
+    const needsWalletProof = !/^0x[a-fA-F0-9]{40}$/.test(payoutWallet)
+      && /^0x[a-fA-F0-9]{40}$/.test(evmSessionAddress);
+    if (!/^0x[a-fA-F0-9]{40}$/.test(payoutWallet) && !needsWalletProof) {
       setShowWalletChoices(true);
-      showToast('Connect and verify your HyperEVM wallet first');
+      showToast('Connect your HyperEVM wallet first');
       return;
     }
     setWithdrawBusy(true);
     try {
+      if (needsWalletProof) {
+        await persistWallet(evmSessionAddress, wcProviderRef.current || window.ethereum);
+        payoutWallet = evmSessionAddress;
+      }
       const data = await api('/api/withdraw', {
         method: 'POST',
         body: JSON.stringify({
@@ -3052,7 +2849,7 @@ const locked = !claimed && !current;
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 14 }}>
             <div className="card" style={{ margin: 0, padding: '14px 10px', textAlign: 'center' }}>
-              <img src="/hype-coin.svg" alt="HYPE" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'contain', margin: '0 auto 6px' }} />
+              <img src="/hype-icon.png" alt="HYPE" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'contain', margin: '0 auto 6px' }} />
               <div style={{ fontSize: '0.65rem', color: '#9aa', fontWeight: 800 }}>HYPE</div>
               <div style={{ fontSize: '0.95rem', fontWeight: 900, color: '#00ff88', marginTop: 3 }}>{formatNum(user?.balance || 0, 6)}</div>
             </div>
@@ -3074,7 +2871,7 @@ const locked = !claimed && !current;
           <div style={{ fontSize: '0.68rem', letterSpacing: 1.2, color: '#7a9a88', fontWeight: 800, margin: '4px 2px 8px' }}>BALANCES</div>
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             {[
-              { key: 'hype', label: 'HYPE', sub: 'After swap · app balance', amount: formatNum(user?.balance || 0, 8), icon: <img src="/hype-coin.svg" alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'contain' }} /> },
+              { key: 'hype', label: 'HYPE', sub: 'After swap · app balance', amount: formatNum(user?.balance || 0, 8), icon: <img src="/hype-icon.png" alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'contain' }} /> },
               { key: 'ton', label: 'TON', sub: 'Native TON deposit', amount: Number(depositData.balances?.ton || 0).toFixed(6), icon: <Icon name="ton" size={36} /> },
               { key: 'bep20', label: 'USDT BEP20', sub: 'BNB Smart Chain', amount: Number(depositData.balances?.bep20 || 0).toFixed(4), icon: <Icon name="usdt" size={36} /> },
               { key: 'trc20', label: 'USDT TRC20', sub: 'TRON network', amount: Number(depositData.balances?.trc20 || 0).toFixed(4), icon: <Icon name="usdt" size={36} /> },
@@ -3220,9 +3017,9 @@ const locked = !claimed && !current;
           </div>
 
           <div className="card">
-            <div className="card-title"><img src="/hype-coin.svg" alt="HYPE" style={{width:26,height:26,objectFit:'contain',borderRadius:'50%'}} /> Withdraw</div>
+            <div className="card-title"><img src="/hype-icon.png" alt="HYPE" style={{width:26,height:26,objectFit:'contain',borderRadius:'50%'}} /> Withdraw</div>
             <div style={{ marginBottom: 10, fontSize: '0.9rem' }}>
-              <img src="/hype-coin.svg" alt="HYPE" style={{width:24,height:24,objectFit:'contain',borderRadius:'50%',verticalAlign:'middle'}} /> <strong style={{ color: '#00ff88' }}>{formatNum(user?.balance, 10)}</strong>
+              <img src="/hype-icon.png" alt="HYPE" style={{width:24,height:24,objectFit:'contain',borderRadius:'50%',verticalAlign:'middle'}} /> <strong style={{ color: '#00ff88' }}>{formatNum(user?.balance, 10)}</strong>
             </div>
             <div style={{ marginBottom: 10, fontSize: '0.85rem', color: '#ffaa00' }}>
               Minimum withdraw is {config?.min_withdraw || 2} HYPE
@@ -3250,7 +3047,8 @@ const locked = !claimed && !current;
                 disabled={withdrawBusy || walletConnecting}
                 onClick={() => {
                   const payoutWallet = connectedWallet || wdWallet || user?.wallet_address || '';
-                  if (!/^0x[a-fA-F0-9]{40}$/.test(payoutWallet)) {
+                  if (!/^0x[a-fA-F0-9]{40}$/.test(payoutWallet)
+                    && !/^0x[a-fA-F0-9]{40}$/.test(evmSessionAddress)) {
                     setShowWalletChoices(true);
                     return;
                   }
@@ -3262,7 +3060,7 @@ const locked = !claimed && !current;
                   requestWithdraw();
                 }}
               >
-                <img src="/hype-coin.svg" alt="" aria-hidden="true" style={{ width: 22, height: 22, display: 'block', flex: '0 0 22px', objectFit: 'contain', background: 'transparent' }} />
+                <img src="/hype-icon.png" alt="" aria-hidden="true" style={{ width: 22, height: 22, display: 'block', flex: '0 0 22px', objectFit: 'contain', background: 'transparent' }} />
                 {withdrawBusy ? 'Submitting…' : 'Withdraw HYPE'}
               </button>
             )}}
@@ -3279,7 +3077,7 @@ const locked = !claimed && !current;
                 <div key={item.type + '-' + item.id} style={{ padding: '11px 0', borderBottom: '1px solid rgba(0,255,136,0.12)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
-                      {assetIcon === 'hype' ? <img src="/hype-coin.svg" alt="HYPE" style={{width:24,height:24,objectFit:'contain',borderRadius:'50%'}} /> : <Icon name={assetIcon} size={22} title={item.asset} />}
+                      {assetIcon === 'hype' ? <img src="/hype-icon.png" alt="HYPE" style={{width:24,height:24,objectFit:'contain',borderRadius:'50%'}} /> : <Icon name={assetIcon} size={22} title={item.asset} />}
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: '0.86rem', fontWeight: 800 }}>{item.type === 'deposit' ? 'Deposit' : item.type === 'withdrawal' ? 'Withdrawal' : 'Swap'}</div>
                         <div style={{ fontSize: '0.72rem', color: '#9aa' }}>{name} {item.username ? '· @' + item.username : ''}</div>
