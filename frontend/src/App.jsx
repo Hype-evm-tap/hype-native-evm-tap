@@ -3197,14 +3197,22 @@ const locked = !claimed && !current;
                 To: {shortAddr(connectedWallet)}
               </div>
             )}
-            <button
-              className="btn btn-primary"
-              style={{ width: '100%' }}
-              onClick={requestWithdraw}
-              disabled={!connectedWallet}
-            >
-              {connectedWallet ? 'Request Withdrawal' : 'Connect wallet first'}
-            </button>
+            {Number(user?.balance || 0) >= Number(config?.min_withdraw || 1) && (
+              <button
+                className="btn btn-primary"
+                style={{ width: '100%' }}
+                onClick={() => {
+                  if (!connectedWallet) {
+                    setShowWalletChoices(true);
+                    return;
+                  }
+                  requestWithdraw();
+                }}
+              >
+                <img src="/hype-icon.png" alt="" style={{ width: 18, height: 18, objectFit: 'contain', verticalAlign: 'middle', marginRight: 6 }} />
+                Withdraw HYPE
+              </button>
+            )}
           </div>
 
           <div className="card">
