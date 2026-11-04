@@ -3052,7 +3052,7 @@ const locked = !claimed && !current;
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 14 }}>
             <div className="card" style={{ margin: 0, padding: '14px 10px', textAlign: 'center' }}>
-              <img src="/hype-icon.png" alt="HYPE" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'contain', margin: '0 auto 6px' }} />
+              <img src="/hype-coin.svg" alt="HYPE" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'contain', margin: '0 auto 6px' }} />
               <div style={{ fontSize: '0.65rem', color: '#9aa', fontWeight: 800 }}>HYPE</div>
               <div style={{ fontSize: '0.95rem', fontWeight: 900, color: '#00ff88', marginTop: 3 }}>{formatNum(user?.balance || 0, 6)}</div>
             </div>
@@ -3074,7 +3074,7 @@ const locked = !claimed && !current;
           <div style={{ fontSize: '0.68rem', letterSpacing: 1.2, color: '#7a9a88', fontWeight: 800, margin: '4px 2px 8px' }}>BALANCES</div>
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             {[
-              { key: 'hype', label: 'HYPE', sub: 'After swap · app balance', amount: formatNum(user?.balance || 0, 8), icon: <img src="/hype-icon.png" alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'contain' }} /> },
+              { key: 'hype', label: 'HYPE', sub: 'After swap · app balance', amount: formatNum(user?.balance || 0, 8), icon: <img src="/hype-coin.svg" alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'contain' }} /> },
               { key: 'ton', label: 'TON', sub: 'Native TON deposit', amount: Number(depositData.balances?.ton || 0).toFixed(6), icon: <Icon name="ton" size={36} /> },
               { key: 'bep20', label: 'USDT BEP20', sub: 'BNB Smart Chain', amount: Number(depositData.balances?.bep20 || 0).toFixed(4), icon: <Icon name="usdt" size={36} /> },
               { key: 'trc20', label: 'USDT TRC20', sub: 'TRON network', amount: Number(depositData.balances?.trc20 || 0).toFixed(4), icon: <Icon name="usdt" size={36} /> },
@@ -3220,9 +3220,9 @@ const locked = !claimed && !current;
           </div>
 
           <div className="card">
-            <div className="card-title"><img src="/hype-icon.png" alt="HYPE" style={{width:26,height:26,objectFit:'contain',borderRadius:'50%'}} /> Withdraw</div>
+            <div className="card-title"><img src="/hype-coin.svg" alt="HYPE" style={{width:26,height:26,objectFit:'contain',borderRadius:'50%'}} /> Withdraw</div>
             <div style={{ marginBottom: 10, fontSize: '0.9rem' }}>
-              <img src="/hype-icon.png" alt="HYPE" style={{width:24,height:24,objectFit:'contain',borderRadius:'50%',verticalAlign:'middle'}} /> <strong style={{ color: '#00ff88' }}>{formatNum(user?.balance, 10)}</strong>
+              <img src="/hype-coin.svg" alt="HYPE" style={{width:24,height:24,objectFit:'contain',borderRadius:'50%',verticalAlign:'middle'}} /> <strong style={{ color: '#00ff88' }}>{formatNum(user?.balance, 10)}</strong>
             </div>
             <div style={{ marginBottom: 10, fontSize: '0.85rem', color: '#ffaa00' }}>
               Minimum withdraw is {config?.min_withdraw || 2} HYPE
@@ -3279,7 +3279,7 @@ const locked = !claimed && !current;
                 <div key={item.type + '-' + item.id} style={{ padding: '11px 0', borderBottom: '1px solid rgba(0,255,136,0.12)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
-                      {assetIcon === 'hype' ? <img src="/hype-icon.png" alt="HYPE" style={{width:24,height:24,objectFit:'contain',borderRadius:'50%'}} /> : <Icon name={assetIcon} size={22} title={item.asset} />}
+                      {assetIcon === 'hype' ? <img src="/hype-coin.svg" alt="HYPE" style={{width:24,height:24,objectFit:'contain',borderRadius:'50%'}} /> : <Icon name={assetIcon} size={22} title={item.asset} />}
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: '0.86rem', fontWeight: 800 }}>{item.type === 'deposit' ? 'Deposit' : item.type === 'withdrawal' ? 'Withdrawal' : 'Swap'}</div>
                         <div style={{ fontSize: '0.72rem', color: '#9aa' }}>{name} {item.username ? '· @' + item.username : ''}</div>
