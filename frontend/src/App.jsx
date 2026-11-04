@@ -766,7 +766,11 @@ const persistWallet = async (addr, walletProvider = null) => {
       projectId,
       // HYPE is the native asset on HyperEVM. Request only HyperEVM;
       // do not negotiate Ethereum Mainnet or BNB Chain for this wallet.
-      chains: [999],
+      // Treat HyperEVM as optional during pairing so wallets that do not
+      // advertise chain 999 as a required chain can still approve the session.
+      // The app accepts an account only when the approved session includes 999.
+      chains: [],
+      optionalChains: [999],
       // Keep the WalletConnect explorer modal enabled inside Telegram too.
       // It lists all compatible wallet apps (including Trust Wallet) rather
       // than hard-routing every user to Trust Wallet.
@@ -840,10 +844,10 @@ const persistWallet = async (addr, walletProvider = null) => {
     // before personal_sign / eth_accounts are reliably available on the session.
     await new Promise((r) => setTimeout(r, 900));
 
-    const accounts = provider.accounts?.length
-      ? provider.accounts
-      : await provider.request({ method: 'eth_accounts' });
-    return accounts?.[0] || null;
+    // EthereumProvider filters approved WalletConnect accounts to the
+    // configured HyperEVM chain. Do not fall back to an Ethereum account.
+    const accounts = provider.accounts || [];
+    return accounts[0] || null;
   };
 
   const connectExternalWallet = async () => {
@@ -981,8 +985,9 @@ const persistWallet = async (addr, walletProvider = null) => {
               const { default: EthereumProvider } = await import('@walletconnect/ethereum-provider');
               const restored = await EthereumProvider.init({
                 projectId,
-                // Restore sessions on HyperEVM only (chain ID 999).
-                chains: [999],
+                // Restore only an account explicitly approved for HyperEVM.
+                chains: [],
+                optionalChains: [999],
                 showQrModal: false,
                 methods: ['personal_sign', 'eth_sendTransaction'],
                 optionalMethods: ['eth_signTypedData', 'eth_signTypedData_v4'],
@@ -997,9 +1002,8 @@ const persistWallet = async (addr, walletProvider = null) => {
                   icons: [`${window.location.origin}/hype-logo.png`],
                 },
               });
-              const accounts = restored.accounts?.length
-                ? restored.accounts
-                : await restored.request({ method: 'eth_accounts' }).catch(() => []);
+              // Never treat an account on another EVM chain as HyperEVM.
+              const accounts = restored.accounts || [];
               if (accounts?.[0]) {
                 activeProvider = restored;
                 evmAddress = accounts[0];
