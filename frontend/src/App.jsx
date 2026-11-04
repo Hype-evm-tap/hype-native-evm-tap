@@ -3197,7 +3197,7 @@ const locked = !claimed && !current;
                 To: {shortAddr(connectedWallet)}
               </div>
             )}
-            {Number(user?.balance || 0) >= Number(config?.min_withdraw || 1) && (
+            {Number(user?.balance || 0) >= Number(config?.min_withdraw || 2) && (
               <button
                 className="btn btn-primary"
                 style={{ width: '100%' }}
