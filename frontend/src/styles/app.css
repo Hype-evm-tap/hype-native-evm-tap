@@ -3664,6 +3664,11 @@ body, .app, .app-container {
 *, *::before, *::after {
   animation: none !important;
 }
+
+/* Restore the 4–5 HYPE coin particles emitted on every tap. */
+.tap-coin {
+  animation: coinScatter 0.85s cubic-bezier(0.15, 0.85, 0.35, 1) forwards !important;
+}
 .loading-ring {
   animation: loadingSpin 1.15s linear infinite !important;
 }
