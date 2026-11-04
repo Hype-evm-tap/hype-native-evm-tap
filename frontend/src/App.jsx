@@ -3180,7 +3180,7 @@ const locked = !claimed && !current;
             ) : (
               <div className="wallet-connect-box">
                 <p style={{color:'#a0ffc0',fontSize:'0.85rem',marginBottom:12}}>Connect MetaMask, Trust Wallet, Telegram-compatible EVM wallets or another WalletConnect wallet.</p>
-                <button className="btn btn-primary" style={{width:'100%'}} onClick={connectExternalWallet} disabled={walletConnecting}>
+                <button className="btn btn-primary" style={{width:'100%'}} onClick={() => setShowWalletChoices(true)} disabled={walletConnecting}>
                   <Icon name="wallet" size={16} /> {walletConnecting ? 'Connecting…' : 'Connect External Wallet'}
                 </button>
               </div>
