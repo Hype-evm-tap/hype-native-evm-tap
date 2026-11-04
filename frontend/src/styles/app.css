@@ -3623,3 +3623,38 @@ body {
 .ton-swap-button.secondary{width:auto;min-height:38px;margin:0;padding:0 14px;background:rgba(175,163,255,.13);border:1px solid rgba(175,163,255,.22);color:#e6e1ff}
 .ton-swap-note{font-size:.68rem;line-height:1.5;color:#aaa9cc;margin-top:11px}
 @media(max-width:380px){.ton-swap-top{gap:8px}.ton-swap-title span{font-size:.64rem}.ton-swap-status{font-size:.52rem;padding:5px 6px}}
+
+
+/* HYPE visual balance: muted gold, restrained lighting, steady surfaces */
+:root {
+  --gold: #b99d5a;
+  --gold-light: #c9b477;
+  --gold-bright: #d8c58e;
+  --gold-glow: 0 0 8px rgba(185, 157, 90, 0.12);
+}
+body, .app, .app-container {
+  text-shadow: none;
+}
+.gold, .gold-text, .badge.gold, .badge.gold-lvl,
+.miner-heading-row h1 span, .miner-levels-head h2 span,
+.miner-back-btn, .miner-market-foot b, .miner-energy-foot i,
+.miner-level-count, .miner-selected-level > div:first-child strong,
+.miner-page .atf-machine-icon, .atf-machine-speed b {
+  color: #c9b477 !important;
+  text-shadow: none !important;
+}
+.tap-glow-core, .logo-platform-glow, .atf-coin-glow {
+  filter: saturate(.72);
+}
+.energy-cylinder, .energy-cylinder-liquid {
+  box-shadow: none !important;
+}
+.energy-cylinder-liquid {
+  background: linear-gradient(180deg, rgba(201, 180, 119, .72), rgba(143, 119, 61, .78)) !important;
+}
+.miner-market-card, .miner-energy-card {
+  box-shadow: 0 6px 18px rgba(0,0,0,.28), inset 0 1px rgba(255,255,255,.035) !important;
+}
+.miner-page .btn-primary, .btn-gold {
+  box-shadow: 0 3px 10px rgba(185,157,90,.12) !important;
+}
