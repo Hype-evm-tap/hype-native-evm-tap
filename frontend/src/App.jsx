@@ -295,6 +295,7 @@ const [broadcastSending, setBroadcastSending] = useState(false);
   const [wdWallet, setWdWallet] = useState('');
   const [connectedWallet, setConnectedWallet] = useState('');
   const [walletConnecting, setWalletConnecting] = useState(false);
+  const [showWalletChoices, setShowWalletChoices] = useState(false);
   const [depositOrders, setDepositOrders] = useState([]);
   const [depositOrdersBusy, setDepositOrdersBusy] = useState(false);
   const swapProviderRef = useRef(null);
@@ -737,7 +738,7 @@ const persistWallet = async (addr, walletProvider = null) => {
    * WalletConnect v2 — MetaMask / Trust / Binance / Rainbow via QR + deep link
    * npm i @walletconnect/ethereum-provider
    */
-  const connectWalletConnect = async () => {
+  const connectWalletConnect = async (useWalletPicker = false) => {
     const projectId = await getWcProjectId();
     if (!projectId) {
       throw new Error('WalletConnect Project ID missing — add /api/config route + WALLETCONNECT_PROJECT_ID in Worker vars');
@@ -774,7 +775,7 @@ const persistWallet = async (addr, walletProvider = null) => {
       // Keep the WalletConnect explorer modal enabled inside Telegram too.
       // It lists all compatible wallet apps (including Trust Wallet) rather
       // than hard-routing every user to Trust Wallet.
-      showQrModal: !inTelegram,
+      showQrModal: useWalletPicker || !inTelegram,
       // Only account access and personal message signing are needed.
       // No transaction signing or transfer permissions are requested.
       methods: ['personal_sign', 'eth_sendTransaction'],
@@ -822,7 +823,7 @@ const persistWallet = async (addr, walletProvider = null) => {
 
 // In Telegram WebView, pass the exact WalletConnect URI to Trust Wallet.
     // Trust Wallet documents this /wc deep link for WalletConnect v2.
-    if (inTelegram) {
+    if (inTelegram && !useWalletPicker) {
       provider.on('display_uri', (uri) => {
         if (!uri) return;
         const trustLink = `https://link.trustwallet.com/wc?uri=${encodeURIComponent(uri)}`;
@@ -913,6 +914,28 @@ const persistWallet = async (addr, walletProvider = null) => {
       }
     } catch (e) {
       showToast(String(e?.message || 'Connection failed').slice(0, 150));
+    } finally {
+      setWalletConnecting(false);
+    }
+  };
+
+  const connectAllWallets = async () => {
+    if (connectedWallet || evmSessionAddress || walletConnecting) return;
+    setWalletConnecting(true);
+    setShowWalletChoices(false);
+    try {
+      const addr = await connectWalletConnect(true);
+      if (!addr) throw new Error('WalletConnect returned no account');
+      setEvmSessionAddress(addr);
+      swapProviderRef.current = wcProviderRef.current;
+    } catch (e) {
+      console.warn('All-wallet connection failed:', e);
+      const msg = e?.message || 'Wallet connection failed';
+      if (msg.includes('User rejected') || msg.includes('denied') || msg.includes('cancelled')) {
+        showToast('Wallet connection cancelled');
+      } else {
+        showToast(String(msg).slice(0, 150));
+      }
     } finally {
       setWalletConnecting(false);
     }
@@ -2264,7 +2287,7 @@ user: tg?.initDataUnsafe?.user,
               <Icon name="wallet" size={14} /> {connectedWallet ? shortAddr(connectedWallet) : `Connected · ${shortAddr(evmSessionAddress)}`} 
             </button>
           ) : (
-            <button className="connect-wallet-btn" onClick={connectExternalWallet} disabled={walletConnecting}>
+            <button className="connect-wallet-btn" onClick={() => setShowWalletChoices(true)} disabled={walletConnecting}>
               <Icon name="wallet" size={14} /> {walletConnecting ? 'Connecting…' : 'Connect Wallet'}
             </button>
           )}
@@ -3144,7 +3167,7 @@ const locked = !claimed && !current;
             ) : (
               <div className="wallet-connect-box">
                 <p style={{color:'#a0ffc0',fontSize:'0.85rem',marginBottom:12}}>Connect MetaMask, Trust Wallet, Telegram-compatible EVM wallets or another WalletConnect wallet.</p>
-                <button className="btn btn-primary" style={{width:'100%'}} onClick={connectExternalWallet} disabled={walletConnecting}>
+                <button className="btn btn-primary" style={{width:'100%'}} onClick={() => setShowWalletChoices(true)} disabled={walletConnecting}>
                   <Icon name="wallet" size={16} /> {walletConnecting ? 'Connecting…' : 'Connect External Wallet'}
                 </button>
               </div>
@@ -3676,6 +3699,53 @@ const locked = !claimed && !current;
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {showWalletChoices && !(connectedWallet || evmSessionAddress) && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Choose wallet connection"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowWalletChoices(false); }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 100000,
+            background: 'rgba(0,0,0,.78)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center', padding: 20
+          }}
+        >
+          <div style={{
+            width: '100%', maxWidth: 360, padding: 20, borderRadius: 18,
+            background: '#111711', border: '1px solid rgba(0,255,136,.35)',
+            boxShadow: '0 18px 60px rgba(0,0,0,.65)'
+          }}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+              <strong style={{color:'#eafff1',fontSize:17}}>Connect Wallet</strong>
+              <button type="button" className="btn btn-outline" onClick={() => setShowWalletChoices(false)} style={{padding:'4px 10px'}}>✕</button>
+            </div>
+            <p style={{color:'#9bb6a5',fontSize:12,margin:'0 0 16px'}}>Choose how you want to connect to HyperEVM.</p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{width:'100%',marginBottom:10}}
+              disabled={walletConnecting}
+              onClick={() => { setShowWalletChoices(false); connectExternalWallet(); }}
+            >
+              <Icon name="wallet" size={16} /> Trust Wallet
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline"
+              style={{width:'100%'}}
+              disabled={walletConnecting}
+              onClick={connectAllWallets}
+            >
+              <Icon name="wallet" size={16} /> All Wallets
+            </button>
+            <div style={{color:'#718779',fontSize:11,lineHeight:1.45,marginTop:12}}>
+              All Wallets opens the WalletConnect wallet list, including compatible MetaMask, Binance and OKX wallets.
+            </div>
+          </div>
         </div>
       )}
 
