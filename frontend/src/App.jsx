@@ -771,8 +771,10 @@ const persistWallet = async (addr, walletProvider = null) => {
       // The app accepts an account only when the approved session includes 999.
       chains: [],
       optionalChains: [999],
-      // Always show the full WalletConnect wallet picker, including Trust Wallet.
-      showQrModal: true,
+      // Keep the WalletConnect explorer modal enabled inside Telegram too.
+      // It lists all compatible wallet apps (including Trust Wallet) rather
+      // than hard-routing every user to Trust Wallet.
+      showQrModal: !inTelegram,
       // Only account access and personal message signing are needed.
       // No transaction signing or transfer permissions are requested.
       methods: ['personal_sign', 'eth_sendTransaction'],
@@ -818,8 +820,22 @@ const persistWallet = async (addr, walletProvider = null) => {
       wcProviderRef.current = null;
     });
 
-    // WalletConnect's modal handles wallet selection and pairing URI handoff.
-    // Keep the full wallet list visible instead of auto-opening Trust Wallet.
+// In Telegram WebView, pass the exact WalletConnect URI to Trust Wallet.
+    // Trust Wallet documents this /wc deep link for WalletConnect v2.
+    if (inTelegram) {
+      provider.on('display_uri', (uri) => {
+        if (!uri) return;
+        const trustLink = `https://link.trustwallet.com/wc?uri=${encodeURIComponent(uri)}`;
+        // Telegram WebView cannot handle Trust's redirected trust:// scheme.
+        // openLink hands the HTTPS universal link to Android outside the WebView.
+        const telegramWebApp = window.Telegram?.WebApp;
+        if (typeof telegramWebApp?.openLink === 'function') {
+          telegramWebApp.openLink(trustLink);
+        } else {
+          window.open(trustLink, '_blank', 'noopener,noreferrer');
+        }
+      });
+    }
 
     // enable() waits for explicit wallet approval; no address is accepted before it.
     await provider.enable();
