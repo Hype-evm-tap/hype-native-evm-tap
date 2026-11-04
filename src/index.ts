@@ -14,7 +14,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { parseUnits, recoverMessageAddress } from 'viem';
-import { Address, Cell, contractAddress, loadStateInit, WalletContractV1R1, WalletContractV1R2, WalletContractV1R3, WalletContractV2R1, WalletContractV2R2, WalletContractV3R1, WalletContractV3R2, WalletContractV4 as WalletContractV4R2, WalletContractV5R1 } from '@ton/ton';
+import { Address, Cell, TonClient4, contractAddress, loadStateInit, WalletContractV1R1, WalletContractV1R2, WalletContractV1R3, WalletContractV2R1, WalletContractV2R2, WalletContractV3R1, WalletContractV3R2, WalletContractV4 as WalletContractV4R2, WalletContractV5R1 } from '@ton/ton';
 
 type Bindings = {
   DB: D1Database;
@@ -479,8 +479,34 @@ async function verifyTonConnectProof(input: any, expectedDomain: string, expecte
   const stateInit = loadStateInit(Cell.fromBase64(stateInitBoc).beginParse());
   const derived = contractAddress(address.workChain, stateInit);
   if (!derived.equals(address)) throw new Error('TON wallet address does not match its state init.');
-  const publicKey = extractTonWalletPublicKey(stateInit);
-  if (input.public_key && String(input.public_key).toLowerCase() !== bytesToHex(publicKey)) throw new Error('TON wallet public key mismatch.');
+  const walletTgTrampolineHash = '9149ae51c1e4689710cebf7830297b16acfbadb363a920a537893e7ffeeca768';
+  let publicKey: Uint8Array;
+  if (stateInit.code && bytesToHex(stateInit.code.hash()) === walletTgTrampolineHash) {
+    // Telegram Wallet uses WalletTg: its StateInit contains an immutable
+    // trampoline, while the current signing key is read from the live account.
+    // Verify both the trampoline and active on-chain code before trusting getter.
+    const tonClient = new TonClient4({ endpoint: 'https://mainnet-v4.tonhubapi.com' });
+    const provider = tonClient.provider(address, null);
+    const account = await provider.getState();
+    if (account.state.type !== 'active' || !account.state.code) {
+      throw new Error('Telegram Wallet account is not active on TON mainnet.');
+    }
+    const activeCode = Cell.fromBoc(account.state.code);
+    if (activeCode.length !== 1 || bytesToHex(activeCode[0].hash()) !== walletTgTrampolineHash) {
+      throw new Error('TON account code is not a verified Telegram Wallet contract.');
+    }
+    const getter = await provider.get('get_public_key', []);
+    const keyValue = getter.stack.readBigNumber();
+    if (keyValue < 0n || keyValue >= (1n << 256n)) {
+      throw new Error('Telegram Wallet returned an invalid signing public key.');
+    }
+    publicKey = hexBytes(keyValue.toString(16).padStart(64, '0'));
+  } else {
+    publicKey = extractTonWalletPublicKey(stateInit);
+  }
+  if (input.public_key && String(input.public_key).toLowerCase() !== bytesToHex(publicKey)) {
+    throw new Error('TON wallet public key mismatch.');
+  }
   const workchain = new Uint8Array(4);
   new DataView(workchain.buffer).setInt32(0, address.workChain, false);
   const domainLength = new Uint8Array(4);
