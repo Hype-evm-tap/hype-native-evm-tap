@@ -292,6 +292,7 @@ export default function App() {
 const [broadcastSending, setBroadcastSending] = useState(false);
   const [newTask, setNewTask] = useState({ title: '', type: 'telegram', link: '', reward: '0.0085' });
   const [wdAmount, setWdAmount] = useState('');
+  const [withdrawBusy, setWithdrawBusy] = useState(false);
   const [wdWallet, setWdWallet] = useState('');
   const [connectedWallet, setConnectedWallet] = useState('');
   const [walletConnecting, setWalletConnecting] = useState(false);
@@ -2138,32 +2139,54 @@ showToast(data.error || 'Already checked in today');
   };
 
   const requestWithdraw = async () => {
-    const amount = parseFloat(wdAmount);
-    if (!amount || amount < (config?.min_withdraw || 2)) {
-      showToast(`Min ${config?.min_withdraw || 2} HYPE`);
+    if (withdrawBusy) return;
+    const amount = Number(wdAmount);
+    const minWithdraw = Number(config?.min_withdraw || 2);
+    const availableBalance = Number(user?.balance || 0);
+    const payoutWallet = connectedWallet || wdWallet || user?.wallet_address || '';
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showToast('Enter the HYPE amount to withdraw');
       return;
     }
-    if (!connectedWallet || connectedWallet.length < 10) {
-      showToast('Connect your wallet first');
+    if (amount < minWithdraw) {
+      showToast(`Minimum withdrawal is ${minWithdraw} HYPE`);
       return;
     }
-    const data = await api('/api/withdraw', {
-      method: 'POST',
-      body: JSON.stringify({
-
-user: tg?.initDataUnsafe?.user,
-        amount,
-        wallet_address: connectedWallet,
-      }),
-    });
-    if (data.success) {
-      showToast('Request submitted!');
-      setWdAmount('');
-      loadUser();
-      api('/api/withdrawals').then((d) => setWithdrawals(d.withdrawals || []));
-      await loadHistory();
-    } else {
-      showToast(data.error || 'Failed');
+    if (amount > availableBalance) {
+      showToast('Withdrawal amount exceeds your HYPE balance');
+      return;
+    }
+    if (!/^0x[a-fA-F0-9]{40}$/.test(payoutWallet)) {
+      setShowWalletChoices(true);
+      showToast('Connect and verify your HyperEVM wallet first');
+      return;
+    }
+    setWithdrawBusy(true);
+    try {
+      const data = await api('/api/withdraw', {
+        method: 'POST',
+        body: JSON.stringify({
+          user: tg?.initDataUnsafe?.user,
+          amount,
+          wallet_address: payoutWallet,
+        }),
+      });
+      if (data.success) {
+        showToast('Withdrawal request submitted!');
+        setWdAmount('');
+        if (data.balance != null) setUser((old) => old ? { ...old, balance: Number(data.balance) || 0 } : old);
+        await Promise.all([
+          loadUser(),
+          api('/api/withdrawals').then((d) => setWithdrawals(d.withdrawals || [])),
+          loadHistory(),
+        ]);
+      } else {
+        showToast(data.error || 'Withdrawal request failed');
+      }
+    } catch (error) {
+      showToast(error?.message || 'Withdrawal request failed. Please retry.');
+    } finally {
+      setWithdrawBusy(false);
     }
   };
 
@@ -3202,7 +3225,7 @@ const locked = !claimed && !current;
               <img src="/hype-icon.png" alt="HYPE" style={{width:24,height:24,objectFit:'contain',borderRadius:'50%',verticalAlign:'middle'}} /> <strong style={{ color: '#00ff88' }}>{formatNum(user?.balance, 10)}</strong>
             </div>
             <div style={{ marginBottom: 10, fontSize: '0.85rem', color: '#ffaa00' }}>
-              Minimum withdraw is {config?.min_withdraw || 1} HYPE
+              Minimum withdraw is {config?.min_withdraw || 2} HYPE
             </div>
             <div style={{ marginBottom: 12, fontSize: '0.85rem', color: '#00ff88' }}>
               <Icon name="ban" size={14} /> We don’t charge any fees
@@ -3222,19 +3245,27 @@ const locked = !claimed && !current;
             {Number(user?.balance || 0) >= Number(config?.min_withdraw || 2) && (
               <button
                 className="btn btn-primary"
-                style={{ width: '100%' }}
+                type="button"
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                disabled={withdrawBusy || walletConnecting}
                 onClick={() => {
-                  if (!connectedWallet) {
+                  const payoutWallet = connectedWallet || wdWallet || user?.wallet_address || '';
+                  if (!/^0x[a-fA-F0-9]{40}$/.test(payoutWallet)) {
                     setShowWalletChoices(true);
+                    return;
+                  }
+                  if (!wdAmount.trim()) {
+                    setWdAmount(formatNum(user?.balance, 10));
+                    showToast('Your full HYPE balance is selected. Tap Withdraw HYPE again to submit.');
                     return;
                   }
                   requestWithdraw();
                 }}
               >
-                <img src="/hype-icon.png" alt="" style={{ width: 18, height: 18, objectFit: 'contain', verticalAlign: 'middle', marginRight: 6 }} />
-                Withdraw HYPE
+                <img src="/hype-coin.svg" alt="" aria-hidden="true" style={{ width: 22, height: 22, display: 'block', flex: '0 0 22px', objectFit: 'contain', background: 'transparent' }} />
+                {withdrawBusy ? 'Submitting…' : 'Withdraw HYPE'}
               </button>
-            )}
+            )}}
           </div>
 
           <div className="card">
