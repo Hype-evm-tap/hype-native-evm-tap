@@ -773,7 +773,8 @@ const persistWallet = async (addr, walletProvider = null) => {
       showQrModal: !inTelegram,
       // Only account access and personal message signing are needed.
       // No transaction signing or transfer permissions are requested.
-      methods: ['personal_sign', 'eth_accounts', 'eth_requestAccounts', 'eth_sendTransaction', 'eth_call', 'eth_getTransactionReceipt', 'eth_chainId'],
+      methods: ['personal_sign', 'eth_sendTransaction'],
+      optionalMethods: ['eth_signTypedData', 'eth_signTypedData_v4'],
       events: ['chainChanged', 'accountsChanged', 'disconnect', 'session_delete'],
       rpcMap: {
         999: 'https://rpc.hyperliquid.xyz/evm',
@@ -983,7 +984,8 @@ const persistWallet = async (addr, walletProvider = null) => {
                 // Restore sessions on HyperEVM only (chain ID 999).
                 chains: [999],
                 showQrModal: false,
-                methods: ['personal_sign', 'eth_accounts', 'eth_requestAccounts', 'eth_sendTransaction', 'eth_call', 'eth_getTransactionReceipt', 'eth_chainId'],
+                methods: ['personal_sign', 'eth_sendTransaction'],
+                optionalMethods: ['eth_signTypedData', 'eth_signTypedData_v4'],
                 events: ['chainChanged', 'accountsChanged', 'disconnect', 'session_delete'],
                 rpcMap: {
                   999: 'https://rpc.hyperliquid.xyz/evm',
