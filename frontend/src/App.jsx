@@ -1067,6 +1067,113 @@ const persistWallet = async (addr, walletProvider = null) => {
     };
   }, []);
 
+  // Initialize TON Connect on app startup so its persisted session can restore
+  // without requiring the user to press Connect again. A saved server link alone
+  // is never treated as a live connection; only TonConnect's active account counts.
+  useEffect(() => {
+    let disposed = false;
+    const restoreTonConnect = async () => {
+      if (window.__HYPE_TONCONNECT_UI__) {
+        tonConnectUIRef.current = window.__HYPE_TONCONNECT_UI__;
+        return;
+      }
+      if (!window.__HYPE_TONCONNECT_LOAD_PROMISE__) {
+        window.__HYPE_TONCONNECT_LOAD_PROMISE__ = (async () => {
+          const sources = [
+            'https://unpkg.com/@tonconnect/ui@2.0.9/dist/tonconnect-ui.min.js',
+            'https://cdn.jsdelivr.net/npm/@tonconnect/ui@2.0.9/dist/tonconnect-ui.min.js',
+            'https://unpkg.com/@tonconnect/ui@2.2.4/dist/tonconnect-ui.min.js',
+            'https://cdn.jsdelivr.net/npm/@tonconnect/ui@2.2.4/dist/tonconnect-ui.min.js',
+          ];
+          let lastError;
+          for (const src of sources) {
+            try {
+              if (window.TON_CONNECT_UI?.TonConnectUI) return true;
+              if (window.customElements?.get('tc-root')) throw new Error('TON Connect UI is partially initialized');
+              await new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                const timeout = setTimeout(() => {
+                  script.remove();
+                  reject(new Error('TON Connect UI download timed out'));
+                }, 15000);
+                script.src = src;
+                script.async = true;
+                script.dataset.tonconnectUi = 'true';
+                script.onload = () => {
+                  clearTimeout(timeout);
+                  setTimeout(() => window.TON_CONNECT_UI?.TonConnectUI ? resolve() : reject(new Error('TON Connect UI did not initialize')), 50);
+                };
+                script.onerror = () => {
+                  clearTimeout(timeout);
+                  script.remove();
+                  reject(new Error('TON Connect UI CDN unavailable'));
+                };
+                document.head.appendChild(script);
+              });
+              if (window.TON_CONNECT_UI?.TonConnectUI) return true;
+            } catch (error) {
+              lastError = error;
+              if (window.customElements?.get('tc-root')) throw error;
+            }
+          }
+          throw lastError || new Error('Could not load TON Connect UI');
+        })();
+      }
+      await window.__HYPE_TONCONNECT_LOAD_PROMISE__;
+      if (disposed || window.__HYPE_TONCONNECT_UI__) return;
+      const TonConnectUI = window.TON_CONNECT_UI?.TonConnectUI;
+      if (typeof TonConnectUI !== 'function') throw new Error('TON Connect UI unavailable');
+      const ui = new TonConnectUI({
+        manifestUrl: window.location.origin + '/tonconnect-manifest.json',
+        enableAndroidBackHandler: false,
+      });
+      ui.setConnectionNetwork('-239');
+      tonConnectUIRef.current = ui;
+      window.__HYPE_TONCONNECT_UI__ = ui;
+      ui.onStatusChange(async (wallet) => {
+        if (!wallet?.account?.address) {
+          setTonWallet(null);
+          return;
+        }
+        const address = String(wallet.account.address);
+        let linked = null;
+        try {
+          const saved = await api('/api/ton-wallet');
+          if (saved?.wallet?.address_raw === address) linked = saved.wallet;
+        } catch (_) {}
+        if (!disposed) {
+          setTonWallet({
+            address_friendly: linked?.address_friendly || address,
+            address_raw: address,
+            verified: Boolean(linked),
+          });
+        }
+      });
+      // TonConnectUI restores its persisted session internally; this also
+      // covers clients that emit status before the React listener is attached.
+      if (ui.connected && ui.account?.address) {
+        const address = String(ui.account.address);
+        let linked = null;
+        try {
+          const saved = await api('/api/ton-wallet');
+          if (saved?.wallet?.address_raw === address) linked = saved.wallet;
+        } catch (_) {}
+        if (!disposed) setTonWallet({
+          address_friendly: linked?.address_friendly || address,
+          address_raw: address,
+          verified: Boolean(linked),
+        });
+      } else if (!disposed) {
+        setTonWallet(null);
+      }
+    };
+    window.__HYPE_TONCONNECT_INIT_PROMISE__ = restoreTonConnect().catch((error) => {
+      console.warn('TON Connect session restore unavailable:', error);
+      window.__HYPE_TONCONNECT_INIT_PROMISE__ = null;
+    });
+    return () => { disposed = true; };
+  }, []);
+
 
   const doCheckin = async () => {
     // Prevent duplicate requests while a claim is being processed.
@@ -1699,6 +1806,10 @@ showToast(data.error || 'Already checked in today');
     let activeTonUI = tonConnectUIRef.current || window.__HYPE_TONCONNECT_UI__ || null;
     try {
       setWalletConnecting(true);
+      if (!activeTonUI && window.__HYPE_TONCONNECT_INIT_PROMISE__) {
+        await window.__HYPE_TONCONNECT_INIT_PROMISE__.catch(() => {});
+        activeTonUI = tonConnectUIRef.current || window.__HYPE_TONCONNECT_UI__ || null;
+      }
       // TonConnectUI registers the global custom element "tc-root".
       // Keep one instance across React remounts to prevent duplicate registration.
       let ui = activeTonUI;
