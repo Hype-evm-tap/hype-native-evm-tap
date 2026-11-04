@@ -304,7 +304,7 @@ const [broadcastSending, setBroadcastSending] = useState(false);
   const [checkinRewards, setCheckinRewards] = useState([0.0000089, 0.000002, 0.000006, 0.000007, 0.0000079, 0.0000089, 0.0004]);
   const [adBusy, setAdBusy] = useState(false);
   const [adStatus, setAdStatus] = useState('');
-  const [adUsage, setAdUsage] = useState({ daily_limit: 10, ads_used: 0, ads_remaining: 10, retry_after: 0 });
+  const [adUsage, setAdUsage] = useState({ daily_limit: 1000, ads_used: 0, ads_remaining: 1000, retry_after: 0 });
   const [adResetCountdown, setAdResetCountdown] = useState(0);
   const [adHistory, setAdHistory] = useState([]);
   const [adHistoryOpen, setAdHistoryOpen] = useState(false);
@@ -1503,7 +1503,7 @@ showToast(data.error || 'Already checked in today');
     const usage = await api('/api/ads/usage');
     if (!usage.error) {
       setAdUsage({
-        daily_limit: Number(usage.daily_limit) || 10,
+        daily_limit: Number(usage.daily_limit) || 1000,
         ads_used: Number(usage.ads_used) || 0,
         ads_remaining: Math.max(0, Number(usage.ads_remaining) || 0),
         retry_after: Math.max(0, Number(usage.retry_after) || 0),
@@ -1544,7 +1544,7 @@ showToast(data.error || 'Already checked in today');
     try {
       const session = await api('/api/ads/start', { method: 'POST', body: JSON.stringify({}) });
       if (session.ads_used !== undefined) {
-        setAdUsage({ daily_limit: 10, ads_used: Number(session.ads_used) || 0, ads_remaining: Number(session.ads_remaining) || 0, retry_after: 0 });
+        setAdUsage({ daily_limit: 1000, ads_used: Number(session.ads_used) || 0, ads_remaining: Number(session.ads_remaining) || 0, retry_after: 0 });
       }
       if (session.error || !session.ymid) {
         await loadAdUsage();
@@ -2713,7 +2713,7 @@ const locked = !claimed && !current;
             );
           })}
           <div className="card" style={{ marginTop: 14 }}>
-            <button className="btn btn-primary" style={{ width: '100%' }} disabled={adHistoryBusy} onClick={loadAdHistory}>
+            <button className="btn btn-outline" style={{ width: '100%', marginBottom: 8 }} onClick={loadAdUsage}>\n              {adUsage.ads_remaining.toLocaleString()} Ads Left\n            </button>\n            <button className="btn btn-primary" style={{ width: '100%' }} disabled={adHistoryBusy} onClick={loadAdHistory}>
               <Icon name="history" size={16} /> {adHistoryBusy ? 'Loading Ads History…' : 'View Ads Reward History'}
             </button>
             {adHistoryOpen && (
