@@ -295,6 +295,7 @@ const [broadcastSending, setBroadcastSending] = useState(false);
   const [wdWallet, setWdWallet] = useState('');
   const [connectedWallet, setConnectedWallet] = useState('');
   const [walletConnecting, setWalletConnecting] = useState(false);
+  const [showWalletChoices, setShowWalletChoices] = useState(false);
   const [depositOrders, setDepositOrders] = useState([]);
   const [depositOrdersBusy, setDepositOrdersBusy] = useState(false);
   const swapProviderRef = useRef(null);
@@ -737,7 +738,7 @@ const persistWallet = async (addr, walletProvider = null) => {
    * WalletConnect v2 — MetaMask / Trust / Binance / Rainbow via QR + deep link
    * npm i @walletconnect/ethereum-provider
    */
-  const connectWalletConnect = async () => {
+  const connectWalletConnect = async (useWalletPicker = false) => {
     const projectId = await getWcProjectId();
     if (!projectId) {
       throw new Error('WalletConnect Project ID missing — add /api/config route + WALLETCONNECT_PROJECT_ID in Worker vars');
@@ -774,7 +775,7 @@ const persistWallet = async (addr, walletProvider = null) => {
       // Keep the WalletConnect explorer modal enabled inside Telegram too.
       // It lists all compatible wallet apps (including Trust Wallet) rather
       // than hard-routing every user to Trust Wallet.
-      showQrModal: !inTelegram,
+      showQrModal: useWalletPicker || !inTelegram,
       // Only account access and personal message signing are needed.
       // No transaction signing or transfer permissions are requested.
       methods: ['personal_sign', 'eth_sendTransaction'],
@@ -822,7 +823,7 @@ const persistWallet = async (addr, walletProvider = null) => {
 
 // In Telegram WebView, pass the exact WalletConnect URI to Trust Wallet.
     // Trust Wallet documents this /wc deep link for WalletConnect v2.
-    if (inTelegram) {
+    if (inTelegram && !useWalletPicker) {
       provider.on('display_uri', (uri) => {
         if (!uri) return;
         const trustLink = `https://link.trustwallet.com/wc?uri=${encodeURIComponent(uri)}`;
@@ -913,6 +914,24 @@ const persistWallet = async (addr, walletProvider = null) => {
       }
     } catch (e) {
       showToast(String(e?.message || 'Connection failed').slice(0, 150));
+    } finally {
+      setWalletConnecting(false);
+    }
+  };
+
+  // Open the WalletConnect explorer for users who want to choose any
+  // compatible wallet. The default Trust Wallet path above remains unchanged.
+  const connectAllWallets = async () => {
+    if (connectedWallet || evmSessionAddress || walletConnecting) return;
+    setWalletConnecting(true);
+    try {
+      const addr = await connectWalletConnect(true);
+      if (!addr) throw new Error('WalletConnect returned no HyperEVM account');
+      setEvmSessionAddress(addr);
+      swapProviderRef.current = wcProviderRef.current;
+    } catch (e) {
+      console.warn('Wallet picker connection failed:', e);
+      showToast(String(e?.message || 'Wallet connection failed').slice(0, 150));
     } finally {
       setWalletConnecting(false);
     }
@@ -2264,9 +2283,26 @@ user: tg?.initDataUnsafe?.user,
               <Icon name="wallet" size={14} /> {connectedWallet ? shortAddr(connectedWallet) : `Connected · ${shortAddr(evmSessionAddress)}`} 
             </button>
           ) : (
-            <button className="connect-wallet-btn" onClick={connectExternalWallet} disabled={walletConnecting}>
+            <button className="connect-wallet-btn" onClick={() => setShowWalletChoices(true)} disabled={walletConnecting}>
               <Icon name="wallet" size={14} /> {walletConnecting ? 'Connecting…' : 'Connect Wallet'}
             </button>
+            {showWalletChoices && (
+              <div style={{position:'fixed',inset:0,zIndex:99999,background:'rgba(0,0,0,.78)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={() => setShowWalletChoices(false)}>
+                <div style={{width:'100%',maxWidth:360,background:'#11100d',border:'1px solid #3a3325',borderRadius:18,padding:20,color:'#fff'}} onClick={e => e.stopPropagation()}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
+                    <strong style={{fontSize:17}}>Choose Wallet</strong>
+                    <button type="button" onClick={() => setShowWalletChoices(false)} style={{background:'transparent',border:0,color:'#fff',fontSize:22}}>×</button>
+                  </div>
+                  <button type="button" className="btn btn-primary" style={{width:'100%',marginBottom:10}} onClick={() => {setShowWalletChoices(false);connectExternalWallet();}}>
+                    Trust Wallet
+                  </button>
+                  <button type="button" className="btn btn-secondary" style={{width:'100%'}} onClick={() => {setShowWalletChoices(false);connectAllWallets();}}>
+                    All Wallets · MetaMask · Binance · OKX · More
+                  </button>
+                  <p style={{fontSize:12,color:'#aaa',lineHeight:1.5,margin:'12px 0 0'}}>Choose Trust Wallet directly, or open the full WalletConnect wallet list.</p>
+                </div>
+              </div>
+            )}
           )}
           <div className="uid-badge">
             <Icon name="folder" size={12} /> UID {user?.id || '—'}
