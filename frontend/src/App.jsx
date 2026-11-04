@@ -2283,10 +2283,11 @@ user: tg?.initDataUnsafe?.user,
               <Icon name="wallet" size={14} /> {connectedWallet ? shortAddr(connectedWallet) : `Connected · ${shortAddr(evmSessionAddress)}`} 
             </button>
           ) : (
-            <button className="connect-wallet-btn" onClick={() => setShowWalletChoices(true)} disabled={walletConnecting}>
-              <Icon name="wallet" size={14} /> {walletConnecting ? 'Connecting…' : 'Connect Wallet'}
-            </button>
-            {showWalletChoices && (
+            <>
+              <button className="connect-wallet-btn" onClick={() => setShowWalletChoices(true)} disabled={walletConnecting}>
+                <Icon name="wallet" size={14} /> {walletConnecting ? 'Connecting…' : 'Connect Wallet'}
+              </button>
+              {showWalletChoices && (
               <div style={{position:'fixed',inset:0,zIndex:99999,background:'rgba(0,0,0,.78)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={() => setShowWalletChoices(false)}>
                 <div style={{width:'100%',maxWidth:360,background:'#11100d',border:'1px solid #3a3325',borderRadius:18,padding:20,color:'#fff'}} onClick={e => e.stopPropagation()}>
                   <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
@@ -2302,7 +2303,8 @@ user: tg?.initDataUnsafe?.user,
                   <p style={{fontSize:12,color:'#aaa',lineHeight:1.5,margin:'12px 0 0'}}>Choose Trust Wallet directly, or open the full WalletConnect wallet list.</p>
                 </div>
               </div>
-            )}
+              )}
+            </>
           )}
           <div className="uid-badge">
             <Icon name="folder" size={12} /> UID {user?.id || '—'}
