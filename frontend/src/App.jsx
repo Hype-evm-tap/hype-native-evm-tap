@@ -773,7 +773,7 @@ const persistWallet = async (addr, walletProvider = null) => {
       // Keep the WalletConnect explorer modal enabled inside Telegram too.
       // It lists all compatible wallet apps (including Trust Wallet) rather
       // than hard-routing every user to Trust Wallet.
-      showQrModal: true,
+      showQrModal: !inTelegram,
       // Only account access and personal message signing are needed.
       // No transaction signing or transfer permissions are requested.
       methods: ['personal_sign', 'eth_accounts', 'eth_requestAccounts', 'eth_sendTransaction', 'eth_call', 'eth_getTransactionReceipt', 'eth_chainId'],
@@ -820,7 +820,15 @@ const persistWallet = async (addr, walletProvider = null) => {
       wcProviderRef.current = null;
     });
 
-// enable() opens QR modal and waits for wallet approval
+// In Telegram WebView, pass the exact WalletConnect URI to Trust Wallet.
+    // Trust Wallet documents this /wc deep link for WalletConnect v2.
+    if (inTelegram) {
+      provider.on('display_uri', (uri) => {
+        if (uri) window.location.href = `https://link.trustwallet.com/wc?uri=${encodeURIComponent(uri)}`;
+      });
+    }
+
+    // enable() waits for explicit wallet approval; no address is accepted before it.
     await provider.enable();
 
     // Telegram Android WebView + Trust Wallet often needs a short settle time
@@ -961,7 +969,7 @@ const persistWallet = async (addr, walletProvider = null) => {
 
         // WalletConnect can restore its persisted session after a Telegram
         // WebView resumes. Do not call enable() here: that would open a modal.
-        if (!evmAddress && !activeProvider) {
+        if (!evmAddress) {
           try {
             const projectId = await getWcProjectId();
             if (projectId) {
@@ -1285,7 +1293,6 @@ showToast(data.error || 'Already checked in today');
       });
     }
     if (tab === 'wallet') {
-      api('/api/ton-wallet').then((d) => setTonWallet(d.wallet || null)).catch(() => {});
       api('/api/history').then((d) => setHistory(d.history || [])).catch(() => {});
       api('/api/withdrawals', {
         method: 'POST',
