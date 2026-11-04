@@ -1091,20 +1091,53 @@ async function checkTelegramTaskMembership(db: D1Database, env: Bindings, userId
     return { task, manual: true, isMember: false };
   }
   if (taskType === 'boost') {
-    // Premium-only channel boost task. Bot must be admin in the channel.
+    // Premium-only task: verify the exact bot, channel admin access, and active user boosts.
     if (!isPremium) {
       return { error: 'This boost task is only available for Telegram Premium users', status: 403 };
     }
     if (!env.BOT_TOKEN) return { error: 'Telegram bot token is not configured', status: 503 };
-    const match = String(task.link || '').trim().match(/(?:https?:\/\/)?(?:www\.)?t\.me\/(?:boost\/)?([A-Za-z0-9_]{5,})\/?(?:[?#].*)?$|^@([A-Za-z0-9_]{5,})$/i);
+    const match = String(task.link || '').trim().match(/(?:https?:\\/\\/)?(?:www\\.)?t\\.me\\/(?:boost\\/)?([A-Za-z0-9_]{5,})\\/?(?:[?#].*)?$|^@([A-Za-z0-9_]{5,})$/i);
     const channel = match?.[1] ? `@${match[1]}` : match?.[2] ? `@${match[2]}` : '';
-    if (!channel) return { error: 'Boost task link must be a public Telegram channel link or @username', status: 422 };
-    const response = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/getUserChatBoosts?chat_id=${encodeURIComponent(channel)}&user_id=${userId}`);
-    const result: any = await response.json();
-    if (!result?.ok) {
-      return { error: 'Could not verify boosts. The bot must be an administrator in that channel.', status: 503 };
+    if (!channel) return { error: 'Boost task link must be a public Telegram channel link or @username (example: https://t.me/boost/channelname)', status: 422 };
+
+    const telegramCall = async (method: string, params: Record<string, string | number>) => {
+      const query = new URLSearchParams(Object.entries(params).map(([key, value]) => [key, String(value)]));
+      const response = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}?${query.toString()}`);
+      const data: any = await response.json().catch(() => ({}));
+      return data;
+    };
+
+    // Resolve the configured channel first so subsequent checks use its numeric chat ID.
+    const me = await telegramCall('getMe', {});
+    if (!me?.ok || !me.result?.id) {
+      return { error: `Telegram bot token check failed: ${me?.description || 'getMe was not successful'}`, status: 503 };
     }
-    const boosts = Array.isArray(result.result?.boosts) ? result.result.boosts : [];
+    const chat = await telegramCall('getChat', { chat_id: channel });
+    if (!chat?.ok || !chat.result?.id) {
+      return { error: `Cannot access boost channel ${channel}: ${chat?.description || 'Telegram getChat failed'}. Check the task link and make sure this exact bot is added to that channel.`, status: 503 };
+    }
+
+    // Confirm that the bot configured by BOT_TOKEN (not another bot) is an admin.
+    const botMember = await telegramCall('getChatMember', { chat_id: chat.result.id, user_id: me.result.id });
+    if (!botMember?.ok) {
+      return { error: `Could not check bot admin status in ${chat.result.title || channel}: ${botMember?.description || 'Telegram getChatMember failed'}`, status: 503 };
+    }
+    if (!['creator', 'administrator'].includes(String(botMember.result?.status || ''))) {
+      return { error: `The configured bot @${me.result.username || 'unknown'} is not an administrator in ${chat.result.title || channel}. Add this exact bot as channel admin.`, status: 503 };
+    }
+    if (botMember.result.status === 'administrator' && botMember.result.can_manage_chat === false) {
+      return { error: `Bot @${me.result.username || 'unknown'} is admin, but its Manage Chat permission is disabled in ${chat.result.title || channel}. Enable Manage Chat for the bot.`, status: 503 };
+    }
+
+    // Telegram only returns boosts that this user applied to this channel.
+    const boostResult = await telegramCall('getUserChatBoosts', { chat_id: chat.result.id, user_id: userId });
+    if (!boostResult?.ok) {
+      return { error: `Telegram boost verification failed for ${chat.result.title || channel}: ${boostResult?.description || 'getUserChatBoosts failed'}`, status: 503 };
+    }
+    const now = nowSec();
+    const boosts = Array.isArray(boostResult.result?.boosts)
+      ? boostResult.result.boosts.filter((boost: any) => Number(boost?.expiration_date || 0) > now)
+      : [];
     return { task, isMember: boosts.length > 0, isBoost: true, boostCount: boosts.length };
   }
   if (taskType !== 'telegram') return { error: 'Unsupported task type', status: 422 };
