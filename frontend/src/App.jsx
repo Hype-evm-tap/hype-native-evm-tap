@@ -1934,7 +1934,7 @@ showToast(data.error || 'Already checked in today');
     const amount = Number(wdAmount);
     const minWithdraw = Number(config?.min_withdraw || 2);
     const availableBalance = Number(user?.balance || 0);
-    let payoutWallet = connectedWallet || wdWallet || user?.wallet_address || '';
+    const payoutWallet = connectedWallet || wdWallet || user?.wallet_address || evmSessionAddress || '';
     if (!Number.isFinite(amount) || amount <= 0) {
       showToast('Enter the HYPE amount to withdraw');
       return;
@@ -1947,19 +1947,16 @@ showToast(data.error || 'Already checked in today');
       showToast('Withdrawal amount exceeds your HYPE balance');
       return;
     }
-    const needsWalletProof = !/^0x[a-fA-F0-9]{40}$/.test(payoutWallet)
-      && /^0x[a-fA-F0-9]{40}$/.test(evmSessionAddress);
-    if (!/^0x[a-fA-F0-9]{40}$/.test(payoutWallet) && !needsWalletProof) {
+    if (!/^0x[a-fA-F0-9]{40}$/.test(payoutWallet)) {
       setShowWalletChoices(true);
       showToast('Connect your HyperEVM wallet first');
       return;
     }
     setWithdrawBusy(true);
     try {
-      if (needsWalletProof) {
-        await persistWallet(evmSessionAddress, wcProviderRef.current || window.ethereum);
-        payoutWallet = evmSessionAddress;
-      }
+      // A withdrawal is a pending payout request, not an on-chain wallet
+      // transaction. Do not call personal_sign here; some wallet providers
+      // return "method not found" for that unnecessary signing request.
       const data = await api('/api/withdraw', {
         method: 'POST',
         body: JSON.stringify({
@@ -3060,7 +3057,7 @@ const locked = !claimed && !current;
                   requestWithdraw();
                 }}
               >
-                <img src="/hype-icon.png" alt="" aria-hidden="true" style={{ width: 22, height: 22, display: 'block', flex: '0 0 22px', objectFit: 'contain', background: 'transparent' }} />
+                <img src="/hype-icon.png" alt="" aria-hidden="true" style={{ width: 22, height: 22, display: 'block', flex: '0 0 22px', objectFit: 'contain', background: 'transparent', borderRadius: '50%', mixBlendMode: 'screen' }} />
                 {withdrawBusy ? 'Submitting…' : 'Withdraw HYPE'}
               </button>
             )}}
